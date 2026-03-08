@@ -6,8 +6,16 @@
   <title>ani-web</title>
   <meta name="description" content="Watch anime episodes — powered by ani-web">
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="preconnect" href="https://cdn.plyr.io">
+
+  <!-- Pico CSS -->
   <link rel="preload" as="style" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.classless.min.css" onload="this.onload=null;this.rel='stylesheet'">
   <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.classless.min.css"></noscript>
+
+  <!-- Plyr CSS -->
+  <link rel="preload" as="style" href="https://cdn.plyr.io/3.8.4/plyr.css" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link rel="stylesheet" href="https://cdn.plyr.io/3.8.4/plyr.css"></noscript>
+
   <style>
     /* Compact overrides — Pico's defaults are generous, tighten for this use case */
     :root {
@@ -83,10 +91,16 @@
       margin: 1rem 0;
     }
 
-    #player {
-      width: 100%;
-      aspect-ratio: 16 / 9;
+    /* Plyr container — ensures proper aspect ratio and sizing */
+    .plyr__video-wrapper {
       background: #000;
+      border-radius: var(--pico-border-radius);
+      overflow: hidden;
+    }
+
+    video {
+      width: 100%;
+      height: auto;
       display: block;
     }
 
@@ -95,6 +109,9 @@
       display: flex;
       flex-wrap: wrap;
       gap: 0.5rem;
+      padding: 0.5rem;
+      background: var(--pico-form-element-background-color);
+      border-radius: var(--pico-border-radius);
     }
 
     .quality-btn {
@@ -115,6 +132,35 @@
     .quality-btn.active {
       background: var(--pico-form-element-active-background-color);
       border-color: var(--pico-form-element-active-border-color);
+      font-weight: bold;
+    }
+
+    /* Ensure Plyr controls are visible on dark backgrounds */
+    .plyr {
+      --plyr-color-main: #fff;
+    }
+
+    /* Keyboard shortcut help text */
+    #keyboard-help {
+      display: none;
+      font-size: 0.85rem;
+      color: var(--pico-muted-color);
+      margin-top: 0.5rem;
+      padding: 0.5rem;
+      background: var(--pico-form-element-background-color);
+      border-radius: var(--pico-border-radius);
+      border-left: 3px solid var(--pico-form-element-active-border-color);
+    }
+
+    #keyboard-help.show {
+      display: block;
+    }
+
+    #keyboard-help code {
+      background: var(--pico-code-background-color);
+      padding: 0.1rem 0.3rem;
+      border-radius: 3px;
+      font-family: monospace;
     }
   </style>
 </head>
@@ -130,12 +176,31 @@
     </section>
 
     <section id="player-section" hidden>
-      <video id="player" controls playsinline></video>
-      <div id="quality-bar"></div>
+      <!-- Plyr video player -->
+      <video id="player" playsinline controls></video>
+
+      <!-- Quality level buttons (populated by hls.js) -->
+      <div id="quality-bar" style="display: none;"></div>
+
+      <!-- Keyboard shortcuts help (toggle with ? key) -->
+      <div id="keyboard-help">
+        <strong>Keyboard shortcuts:</strong><br>
+        <code>Space</code> Play/Pause • <code>←/→</code> Seek (5s) • <code>↑/↓</code> Volume •
+        <code>M</code> Mute • <code>F</code> Fullscreen • <code>?</code> Hide this
+      </div>
     </section>
   </main>
 
+  <!-- hls.js -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"></script>
+
+  <!-- Plyr -->
+  <script src="https://cdn.plyr.io/3.8.4/plyr.js"></script>
+
   <script>
+    // =========================================================================
+    // STATE MANAGEMENT
+    // =========================================================================
     const state = {
       mode: 'sub',
       animeId: null,
@@ -144,10 +209,14 @@
       sources: [],
       history: {},
       hlsInstance: null,
+      plyrInstance: null,
       videoListenersAttached: false
     }
 
-    // Load history from localStorage
+    // =========================================================================
+    // UI UTILITIES
+    // =========================================================================
+
     function loadHistory() {
       try {
         const stored = localStorage.getItem('ani-web-history')
@@ -159,12 +228,10 @@
       }
     }
 
-    // Save history to localStorage
     function saveHistory() {
       localStorage.setItem('ani-web-history', JSON.stringify(state.history))
     }
 
-    // Set status message
     function setStatus(message, isError = false) {
       const el = document.getElementById('status')
       el.textContent = message
@@ -172,43 +239,66 @@
       if (isError) el.classList.add('error')
     }
 
-    // Clear status
     function clearStatus() {
       document.getElementById('status').textContent = ''
     }
 
-    // Show loading indicator
     function showLoading() {
       document.getElementById('load-bar').style.display = ''
     }
 
-    // Hide loading indicator
     function hideLoading() {
       document.getElementById('load-bar').style.display = 'none'
     }
 
-    // Lazy load HLS.js
-    function loadHlsJs(callback) {
-      if (window.Hls) {
-        callback()
-        return
-      }
+    // =========================================================================
+    // PLAYER INITIALIZATION
+    // =========================================================================
 
-      const script = document.createElement('script')
-      script.src = 'https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js'
-      script.onload = callback
-      script.onerror = () => {
-        setStatus('Failed to load HLS.js', true)
-      }
-      document.head.appendChild(script)
+    /**
+     * Initialize Plyr player with custom options
+     * Plyr will be initialized once, then reused for different sources
+     */
+    function initPlyr() {
+      if (state.plyrInstance) return state.plyrInstance
+
+      const videoEl = document.getElementById('player')
+      state.plyrInstance = new Plyr(videoEl, {
+        // Remove quality selector since we'll use hls.js levels
+        controls: [
+          'play-large',
+          'play',
+          'progress',
+          'current-time',
+          'mute',
+          'volume',
+          'settings',
+          'pip',
+          'airplay',
+          'fullscreen'
+        ],
+        settings: ['autoplay', 'speed', 'loop'],
+        autoplay: false,
+        keyboard: { focused: true, global: true },
+        invertTime: false,
+        disableContextMenu: false
+      })
+
+      return state.plyrInstance
     }
 
-    // Generate proxy URL
+    // =========================================================================
+    // PROXY & HLS SETUP
+    // =========================================================================
+
     function proxyUrl(url) {
       return `/api/proxy?url=${encodeURIComponent(url)}`
     }
 
-    // Attach video event listeners for loading indicator
+    /**
+     * Attach video event listeners for loading indicator
+     * These show/hide the progress bar while buffering
+     */
     function attachVideoListeners() {
       if (state.videoListenersAttached) return
 
@@ -219,7 +309,85 @@
       state.videoListenersAttached = true
     }
 
-    // Play source
+    // =========================================================================
+    // QUALITY LEVEL MANAGEMENT
+    // =========================================================================
+
+    /**
+     * Render quality buttons based on hls.js levels
+     * This is called after MANIFEST_PARSED event
+     */
+    function renderQualityBar() {
+      const hls = state.hlsInstance
+      const qualityBar = document.getElementById('quality-bar')
+
+      if (!hls || !hls.levels || hls.levels.length === 0) {
+        qualityBar.style.display = 'none'
+        return
+      }
+
+      qualityBar.innerHTML = ''
+      qualityBar.style.display = ''
+
+      // Add "Auto" button
+      const autoBtn = document.createElement('button')
+      autoBtn.className = 'quality-btn'
+      autoBtn.textContent = 'Auto'
+      autoBtn.addEventListener('click', () => {
+        // Set to -1 for auto quality selection
+        hls.currentLevel = -1
+        updateQualityButtons()
+      })
+      qualityBar.appendChild(autoBtn)
+
+      // Add quality level buttons
+      hls.levels.forEach((level, index) => {
+        const btn = document.createElement('button')
+        btn.className = 'quality-btn'
+        btn.setAttribute('data-level', index)
+
+        // Format: "1080p @ 5 Mbps" or just "1080p"
+        const height = level.height ? `${level.height}p` : `Quality ${index}`
+        const bitrate = level.bitrate ? ` @ ${(level.bitrate / 1000000).toFixed(1)} Mbps` : ''
+        btn.textContent = height + bitrate
+
+        btn.addEventListener('click', () => {
+          hls.currentLevel = index
+          updateQualityButtons()
+        })
+
+        qualityBar.appendChild(btn)
+      })
+
+      updateQualityButtons()
+    }
+
+    /**
+     * Update quality button active state
+     */
+    function updateQualityButtons() {
+      const hls = state.hlsInstance
+      const qualityBar = document.getElementById('quality-bar')
+      const buttons = qualityBar.querySelectorAll('.quality-btn')
+
+      buttons.forEach((btn, index) => {
+        btn.classList.remove('active')
+        if (btn.textContent === 'Auto' && hls.currentLevel === -1) {
+          btn.classList.add('active')
+        } else if (btn.getAttribute('data-level') == hls.currentLevel) {
+          btn.classList.add('active')
+        }
+      })
+    }
+
+    // =========================================================================
+    // SOURCE PLAYBACK
+    // =========================================================================
+
+    /**
+     * Load and play a source (HLS or direct)
+     * Handles both HLS streams (via hls.js) and direct MP4/WebM URLs
+     */
     function playSource(source) {
       const video = document.getElementById('player')
 
@@ -229,56 +397,85 @@
         state.hlsInstance = null
       }
 
-      // Attach video listeners once
+      // Initialize Plyr if needed
+      if (!state.plyrInstance) {
+        initPlyr()
+      }
+
       attachVideoListeners()
 
-      if (source.hls) {
-        loadHlsJs(() => {
-          if (window.Hls && Hls.isSupported()) {
-            const hls = new Hls()
-            state.hlsInstance = hls
-            hls.loadSource(proxyUrl(source.url))
-            hls.attachMedia(video)
-            hls.on(Hls.Events.MANIFEST_PARSED, () => {
-              video.play().catch(() => {})
+      // Clear video source
+      video.src = ''
+      video.textContent = ''
+
+      if (source.hls && window.Hls) {
+        // HLS via hls.js
+        if (Hls.isSupported()) {
+          const hls = new Hls({
+            debug: false,
+            enableWorker: true,
+            defaultAudioCodec: 'aac',
+            lowLatencyMode: false
+          })
+
+          state.hlsInstance = hls
+
+          // Load the manifest
+          hls.loadSource(proxyUrl(source.url))
+          hls.attachMedia(video)
+
+          // CRITICAL: Only play after manifest is parsed and quality levels are loaded
+          hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            renderQualityBar()
+            video.play().catch(() => {
+              // Autoplay policy may block this — user must click play
             })
-          } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            // Safari native HLS
-            video.src = proxyUrl(source.url)
-            video.play().catch(() => {})
-          } else {
-            setStatus('HLS not supported on this browser', true)
-          }
-        })
+          })
+
+          // Handle errors
+          hls.on(Hls.Events.ERROR, (event, data) => {
+            if (data.fatal) {
+              switch (data.type) {
+                case Hls.ErrorTypes.NETWORK_ERROR:
+                  setStatus('Network error — check your connection', true)
+                  break
+                case Hls.ErrorTypes.MEDIA_ERROR:
+                  setStatus('Media error — stream may be unavailable', true)
+                  break
+                default:
+                  setStatus(`Error: ${data.reason}`, true)
+              }
+            }
+          })
+
+          // Listen for quality level changes (for future UI updates)
+          hls.on(Hls.Events.LEVEL_SWITCHED, () => {
+            updateQualityButtons()
+          })
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          // Safari/iOS native HLS support
+          video.src = proxyUrl(source.url)
+          video.play().catch(() => {})
+          document.getElementById('quality-bar').style.display = 'none'
+        } else {
+          setStatus('HLS not supported on this browser', true)
+        }
       } else {
-        video.src = source.url
+        // Direct URL (MP4, WebM, etc.)
+        video.src = proxyUrl(source.url)
         video.play().catch(() => {})
+        document.getElementById('quality-bar').style.display = 'none'
       }
     }
 
-    // Render quality bar
-    function renderQualityBar() {
-      const qualityBar = document.getElementById('quality-bar')
-      qualityBar.innerHTML = ''
+    // =========================================================================
+    // EPISODE MANAGEMENT
+    // =========================================================================
 
-      if (!state.sources || state.sources.length === 0) return
-
-      state.sources.forEach((source, index) => {
-        const btn = document.createElement('button')
-        btn.className = 'quality-btn'
-        if (index === 0) btn.classList.add('active')
-        btn.textContent = source.resolution || `Quality ${index + 1}`
-        btn.addEventListener('click', () => {
-          // Remove active from all
-          document.querySelectorAll('.quality-btn').forEach(b => b.classList.remove('active'))
-          btn.classList.add('active')
-          playSource(source)
-        })
-        qualityBar.appendChild(btn)
-      })
-    }
-
-    // Load episode
+    /**
+     * Load and play an episode
+     * Fetches sources from API and initiates playback
+     */
     async function loadEpisode(e, epNo) {
       const btn = e.currentTarget
       const episodesList = document.getElementById('episodes')
@@ -300,14 +497,15 @@
         state.sources = data.sources || []
         state.currentEp = epNo
 
+        if (state.sources.length === 0) {
+          throw new Error('No sources available for this episode')
+        }
+
         // Show player section
         document.getElementById('player-section').removeAttribute('hidden')
 
-        // Render quality bar and play first source
-        renderQualityBar()
-        if (state.sources.length > 0) {
-          playSource(state.sources[0])
-        }
+        // Play first source
+        playSource(state.sources[0])
 
         // Save to history
         if (!state.history[state.animeId]) {
@@ -325,6 +523,7 @@
         clearStatus()
       } catch (error) {
         setStatus(`Error loading episode: ${error.message}`, true)
+        btn.classList.remove('active')
       } finally {
         btn.removeAttribute('aria-busy')
         btn.disabled = false
@@ -332,7 +531,9 @@
       }
     }
 
-    // Load episodes list
+    /**
+     * Load and display available episodes
+     */
     async function loadEpisodes() {
       showLoading()
 
@@ -370,7 +571,36 @@
       }
     }
 
-    // Initialize on DOMContentLoaded
+    // =========================================================================
+    // KEYBOARD SHORTCUTS (Custom)
+    // =========================================================================
+
+    /**
+     * Custom keyboard shortcuts for player control
+     * Plyr provides many defaults, but we add custom ones here
+     */
+    document.addEventListener('keydown', (e) => {
+      const video = document.getElementById('player')
+      const keyboardHelp = document.getElementById('keyboard-help')
+
+      // Only handle if player is visible and focused
+      if (!state.plyrInstance || document.getElementById('player-section').hidden) {
+        return
+      }
+
+      switch (e.key) {
+        case '?':
+          // Toggle keyboard help
+          e.preventDefault()
+          keyboardHelp.classList.toggle('show')
+          break
+      }
+    })
+
+    // =========================================================================
+    // INITIALIZATION
+    // =========================================================================
+
     document.addEventListener('DOMContentLoaded', () => {
       const params = new URLSearchParams(window.location.search)
       const id = params.get('id')
