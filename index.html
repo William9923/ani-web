@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,6 +13,7 @@
 
     body > main {
       max-width: 860px;
+      padding-inline: 1rem;
     }
 
     h1 { margin-bottom: 0.25rem; }
@@ -25,7 +26,7 @@
       margin-bottom: 0.5rem;
     }
 
-    #search-form input[type="text"] {
+    #search-form input[type="search"] {
       flex: 1;
       min-width: 180px;
       margin-bottom: 0;
@@ -50,21 +51,20 @@
 
     #status.error { color: var(--pico-del-color, #c0392b); }
 
-    /* Results list — clickable rows */
+    /* Results list — card-style articles */
     #results {
-      padding-left: 0;
-      list-style: none;
       margin: 0.5rem 0;
     }
 
-    #results li {
-      padding: 0.6rem 0.25rem;
-      border-bottom: 1px solid var(--pico-table-border-color);
+    #results article {
       cursor: pointer;
+      margin-bottom: 0.5rem;
+      transition: filter 0.1s;
     }
 
-    #results li:last-child { border-bottom: none; }
-    #results li:hover { background: var(--pico-code-background-color); }
+    #results article:hover {
+      filter: brightness(0.96);
+    }
   </style>
 </head>
 <body>
@@ -73,7 +73,7 @@
     <p><small>Search anime to watch</small></p>
 
     <form id="search-form">
-      <input id="search-input" type="text" placeholder="Search anime..." autocomplete="off" autofocus>
+      <input id="search-input" type="search" placeholder="Search anime..." autocomplete="off" autofocus>
       <select id="mode-select">
         <option value="sub" selected>Sub</option>
         <option value="dub">Dub</option>
@@ -83,7 +83,7 @@
 
     <p id="status"></p>
 
-    <ul id="results"></ul>
+    <div id="results"></div>
   </main>
 
   <script>
@@ -128,22 +128,34 @@
       resultsList.innerHTML = ''
 
       results.forEach(item => {
-        const li = document.createElement('li')
-        const title = document.createElement('div')
+        const article = document.createElement('article')
+        article.style.cursor = 'pointer'
+
+        const row = document.createElement('div')
+        row.style.cssText = 'display:flex; justify-content:space-between; align-items:center;'
+
+        const title = document.createElement('strong')
         title.textContent = item.title
-        
+
+        const chevron = document.createElement('span')
+        chevron.textContent = '›'
+        chevron.setAttribute('aria-hidden', 'true')
+
+        row.appendChild(title)
+        row.appendChild(chevron)
+
         const episodes = document.createElement('small')
         episodes.textContent = `${item.episodes ?? '?'} episodes`
-        
-        li.appendChild(title)
-        li.appendChild(episodes)
-        
-        li.addEventListener('click', () => {
+
+        article.appendChild(row)
+        article.appendChild(episodes)
+
+        article.addEventListener('click', () => {
           const url = `/anime.html?id=${encodeURIComponent(item.id)}&title=${encodeURIComponent(item.title)}&mode=${state.mode}`
           window.location.href = url
         })
-        
-        resultsList.appendChild(li)
+
+        resultsList.appendChild(article)
       })
     }
 
