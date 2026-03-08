@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ani-web</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 1rem;
+      font-family: sans-serif;
+      line-height: 1.5;
+      color: #000;
+      background: #fff;
+    }
+
+    main {
+      width: 100%;
+    }
+
+    h1, h2 {
+      margin-top: 1.5rem;
+      margin-bottom: 1rem;
+    }
+
+    h1 {
+      font-size: 2rem;
+    }
+
+    h2 {
+      font-size: 1.5rem;
+    }
+
+    #search-form {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      align-items: center;
+    }
+
+    #search-input {
+      flex: 1;
+      min-width: 200px;
+      padding: 0.5rem;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+
+    #search-form button {
+      padding: 0.5rem 1rem;
+      font-size: 1rem;
+      background: #000;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    #search-form button:hover {
+      background: #333;
+    }
+
+    #search-form label {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+
+    #search-form input[type="radio"] {
+      cursor: pointer;
+    }
+
+    #status {
+      margin: 1rem 0;
+      min-height: 1.5rem;
+      font-size: 0.9rem;
+    }
+
+    #status.error {
+      color: #d32f2f;
+    }
+
+    #status.loading {
+      color: #666;
+    }
+
+    #results {
+      list-style: none;
+      margin: 1rem 0;
+    }
+
+    #results li {
+      padding: 0.75rem 0;
+      border-bottom: 1px solid #eee;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    #results li:hover {
+      background: #f5f5f5;
+    }
+
+    #results li:last-child {
+      border-bottom: none;
+    }
+
+    #episode-section {
+      margin-top: 2rem;
+    }
+
+    #episodes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .episode-btn {
+      padding: 0.5rem 0.75rem;
+      font-size: 0.85rem;
+      background: #f0f0f0;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+
+    .episode-btn:hover {
+      background: #e0e0e0;
+    }
+
+    .episode-btn.active {
+      background: #000;
+      color: #fff;
+      font-weight: bold;
+    }
+
+    .episode-btn.watched {
+      font-weight: bold;
+    }
+
+    #player-section {
+      margin-top: 2rem;
+    }
+
+    #player {
+      width: 100%;
+      max-height: 70vh;
+      background: #000;
+      display: block;
+      margin-top: 1rem;
+      border-radius: 4px;
+    }
+
+    #quality-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+
+    .quality-btn {
+      padding: 0.5rem 0.75rem;
+      font-size: 0.85rem;
+      background: #f0f0f0;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+
+    .quality-btn:hover {
+      background: #e0e0e0;
+    }
+
+    .quality-btn.active {
+      background: #000;
+      color: #fff;
+      font-weight: bold;
+    }
+
+    @media (max-width: 600px) {
+      #search-form {
+        flex-direction: column;
+      }
+
+      #search-input {
+        width: 100%;
+      }
+
+      #search-form button {
+        width: 100%;
+      }
+
+      h1 {
+        font-size: 1.5rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>ani-web</h1>
+
+    <form id="search-form">
+      <input id="search-input" type="text" placeholder="Search anime..." autocomplete="off" autofocus>
+      <button type="submit">Search</button>
+      <label><input type="radio" name="mode" value="sub" checked> Sub</label>
+      <label><input type="radio" name="mode" value="dub"> Dub</label>
+    </form>
+
+    <p id="status"></p>
+
+    <ul id="results"></ul>
+
+    <div id="episode-section" hidden>
+      <h2 id="anime-title"></h2>
+      <div id="episodes"></div>
+    </div>
+
+    <div id="player-section" hidden>
+      <video id="player" controls playsinline></video>
+      <div id="quality-bar"></div>
+    </div>
+  </main>
+
+  <script>
+    const state = {
+      mode: 'sub',
+      currentAnimeId: null,
+      currentTitle: null,
+      currentEp: null,
+      sources: [],
+      history: {}
+    }
+
+    // Load history from localStorage
+    function loadHistory() {
+      try {
+        const stored = localStorage.getItem('ani-web-history')
+        if (stored) {
+          state.history = JSON.parse(stored)
+        }
+      } catch (e) {
+        state.history = {}
+      }
+    }
+
+    // Save history to localStorage
+    function saveHistory() {
+      localStorage.setItem('ani-web-history', JSON.stringify(state.history))
+    }
+
+    // Set status message
+    function setStatus(message, isError = false, isLoading = false) {
+      const el = document.getElementById('status')
+      el.textContent = message
+      el.className = ''
+      if (isError) el.classList.add('error')
+      if (isLoading) el.classList.add('loading')
+    }
+
+    // Clear status
+    function clearStatus() {
+      document.getElementById('status').textContent = ''
+    }
+
+    // Load HLS.js from CDN
+    function loadHlsJs(callback) {
+      if (window.Hls) return callback()
+      const script = document.createElement('script')
+      script.src = 'https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js'
+      script.onload = callback
+      script.onerror = () => setStatus('Failed to load HLS.js', true)
+      document.head.appendChild(script)
+    }
+
+    // Play source
+    function playSource(source) {
+      const video = document.getElementById('player')
+      const currentTime = video.currentTime || 0
+
+      if (source.hls) {
+        loadHlsJs(() => {
+          if (window.Hls && Hls.isSupported()) {
+            const hls = new Hls()
+            hls.loadSource(source.url)
+            hls.attachMedia(video)
+            hls.on('hlsManifestParsed', () => {
+              video.currentTime = currentTime
+              video.play().catch(() => {})
+            })
+          } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            video.src = source.url
+            video.currentTime = currentTime
+            video.play().catch(() => {})
+          } else {
+            setStatus('HLS not supported on this browser', true)
+          }
+        })
+      } else {
+        video.src = source.url
+        video.currentTime = currentTime
+        video.play().catch(() => {})
+      }
+    }
+
+    // Render quality buttons
+    function renderQualityBar() {
+      const bar = document.getElementById('quality-bar')
+      bar.innerHTML = ''
+
+      state.sources.forEach((source, index) => {
+        const btn = document.createElement('button')
+        btn.className = 'quality-btn'
+        btn.textContent = source.resolution || `Quality ${index + 1}`
+        if (index === 0) btn.classList.add('active')
+
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.quality-btn').forEach(b => b.classList.remove('active'))
+          btn.classList.add('active')
+          playSource(source)
+        })
+
+        bar.appendChild(btn)
+      })
+    }
+
+    // Load episode and resolve sources
+    async function loadEpisode(animeId, epNo) {
+      state.currentAnimeId = animeId
+      state.currentEp = epNo
+
+      // Highlight clicked episode
+      document.querySelectorAll('.episode-btn').forEach(btn => {
+        btn.classList.remove('active')
+      })
+      event.target.classList.add('active')
+
+      setStatus(`Loading episode ${epNo}...`, false, true)
+
+      try {
+        const res = await fetch(`/api/resolve?id=${encodeURIComponent(animeId)}&ep=${encodeURIComponent(epNo)}&mode=${state.mode}`)
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+        const data = await res.json()
+        state.sources = data.sources || []
+
+        if (state.sources.length === 0) {
+          setStatus('No sources available', true)
+          return
+        }
+
+        // Show player section
+        document.getElementById('player-section').hidden = false
+
+        renderQualityBar()
+
+        // Play best quality
+        const bestSource = state.sources[0]
+        if (bestSource.hls) {
+          loadHlsJs(() => playSource(bestSource))
+        } else {
+          playSource(bestSource)
+        }
+
+        // Save to history
+        state.history[animeId] = epNo
+        saveHistory()
+
+        clearStatus()
+      } catch (error) {
+        setStatus(`Error loading episode: ${error.message}`, true)
+      }
+    }
+
+    // Load episodes for anime
+    async function loadEpisodes(id, title) {
+      state.currentAnimeId = id
+      state.currentTitle = title
+
+      setStatus('Loading episodes...', false, true)
+
+      try {
+        const res = await fetch(`/api/episodes?id=${encodeURIComponent(id)}&mode=${state.mode}`)
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+        const data = await res.json()
+        const episodes = data.episodes || []
+
+        if (episodes.length === 0) {
+          setStatus('No episodes found', true)
+          return
+        }
+
+        // Show episode section
+        document.getElementById('episode-section').hidden = false
+        document.getElementById('anime-title').textContent = title
+
+        const episodesDiv = document.getElementById('episodes')
+        episodesDiv.innerHTML = ''
+
+        episodes.forEach(epNo => {
+          const btn = document.createElement('button')
+          btn.className = 'episode-btn'
+          btn.textContent = `Ep ${epNo}`
+
+          // Mark watched episodes
+          if (state.history[id] === epNo) {
+            btn.classList.add('watched')
+            btn.textContent += ' (watched)'
+          }
+
+          btn.addEventListener('click', () => loadEpisode(id, epNo))
+          episodesDiv.appendChild(btn)
+        })
+
+        // Hide stale video
+        document.getElementById('player-section').hidden = true
+
+        clearStatus()
+      } catch (error) {
+        setStatus(`Error loading episodes: ${error.message}`, true)
+      }
+    }
+
+    // Render search results
+    function renderResults(results) {
+      const resultsList = document.getElementById('results')
+      resultsList.innerHTML = ''
+
+      results.forEach(item => {
+        const li = document.createElement('li')
+        li.textContent = `${item.title} (${item.episodeCount || '?'} episodes)`
+        li.addEventListener('click', () => loadEpisodes(item.id, item.title))
+        resultsList.appendChild(li)
+      })
+    }
+
+    // Search
+    async function handleSearch(e) {
+      e.preventDefault()
+
+      const query = document.getElementById('search-input').value.trim()
+      if (!query) {
+        setStatus('Please enter a search query', true)
+        return
+      }
+
+      // Clear old results
+      document.getElementById('results').innerHTML = ''
+
+      setStatus('Searching...', false, true)
+
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&mode=${state.mode}`)
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+        const data = await res.json()
+        const results = data.results || []
+
+        if (results.length === 0) {
+          setStatus('No results found')
+          return
+        }
+
+        renderResults(results)
+        clearStatus()
+      } catch (error) {
+        setStatus(`Error searching: ${error.message}`, true)
+      }
+    }
+
+    // Mode switching
+    function handleModeChange(e) {
+      state.mode = e.target.value
+
+      if (state.currentAnimeId) {
+        loadEpisodes(state.currentAnimeId, state.currentTitle)
+      }
+    }
+
+    // Event listeners
+    document.getElementById('search-form').addEventListener('submit', handleSearch)
+    document.querySelectorAll('input[name="mode"]').forEach(radio => {
+      radio.addEventListener('change', handleModeChange)
+    })
+
+    // Initialize
+    loadHistory()
+  </script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "name": "ani-web",
+  "version": "0.1.0",
+  "description": "Browser-based anime streaming frontend for AllAnime",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
