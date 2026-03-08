@@ -370,6 +370,10 @@ async function requestHandler(req, res) {
     return serveStatic(res, path.join(__dirname, 'index.html'))
   }
 
+  if (pathname === '/anime.html') {
+    return serveStatic(res, path.join(__dirname, 'anime.html'))
+  }
+
   // API routes
   if (pathname === '/api/search') {
     const q = query.get('q') || ''

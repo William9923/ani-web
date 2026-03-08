@@ -65,54 +65,12 @@
 
     #results li:last-child { border-bottom: none; }
     #results li:hover { background: var(--pico-code-background-color); }
-
-    /* Episode + quality buttons — compact inline grid */
-    #episodes, #quality-bar {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.4rem;
-      margin: 0.75rem 0;
-    }
-
-    .episode-btn, .quality-btn {
-      padding: 0.3rem 0.6rem;
-      font-size: 0.82rem;
-      cursor: pointer;
-      /* Use Pico's secondary outline style */
-      background: transparent;
-      border: 1px solid var(--pico-secondary);
-      color: var(--pico-secondary);
-      border-radius: var(--pico-border-radius);
-    }
-
-    .episode-btn:hover, .quality-btn:hover {
-      background: var(--pico-secondary-hover-background);
-      color: var(--pico-secondary-inverse);
-    }
-
-    .episode-btn.active, .quality-btn.active {
-      background: var(--pico-primary-background);
-      border-color: var(--pico-primary-border);
-      color: var(--pico-primary-inverse);
-    }
-
-    .episode-btn.watched { font-weight: bold; }
-
-    #player {
-      width: 100%;
-      aspect-ratio: 16 / 9;
-      background: #000;
-      display: block;
-      border-radius: var(--pico-border-radius);
-      margin-top: 0.5rem;
-    }
-
-    #episode-section, #player-section { margin-top: 1.5rem; }
   </style>
 </head>
 <body>
   <main>
     <h1>ani-web</h1>
+    <p><small>Search anime to watch</small></p>
 
     <form id="search-form">
       <input id="search-input" type="text" placeholder="Search anime..." autocomplete="off" autofocus>
@@ -120,31 +78,17 @@
         <option value="sub" selected>Sub</option>
         <option value="dub">Dub</option>
       </select>
-      <button type="submit">Search</button>
+      <button id="search-btn" type="submit">Search</button>
     </form>
 
     <p id="status"></p>
 
     <ul id="results"></ul>
-
-    <div id="episode-section" hidden>
-      <h2 id="anime-title"></h2>
-      <div id="episodes"></div>
-    </div>
-
-    <div id="player-section" hidden>
-      <video id="player" controls playsinline></video>
-      <div id="quality-bar"></div>
-    </div>
   </main>
 
   <script>
     const state = {
       mode: 'sub',
-      currentAnimeId: null,
-      currentTitle: null,
-      currentEp: null,
-      sources: [],
       history: {}
     }
 
@@ -166,183 +110,16 @@
     }
 
     // Set status message
-    function setStatus(message, isError = false, isLoading = false) {
+    function setStatus(message, isError = false) {
       const el = document.getElementById('status')
       el.textContent = message
       el.className = ''
       if (isError) el.classList.add('error')
-      if (isLoading) el.classList.add('loading')
     }
 
     // Clear status
     function clearStatus() {
       document.getElementById('status').textContent = ''
-    }
-
-    // Load HLS.js from CDN
-    function loadHlsJs(callback) {
-      if (window.Hls) return callback()
-      const script = document.createElement('script')
-      script.src = 'https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js'
-      script.onload = callback
-      script.onerror = () => setStatus('Failed to load HLS.js', true)
-      document.head.appendChild(script)
-    }
-
-    // Wrap a URL through our server-side proxy (needed for CDNs that block browser requests)
-    function proxyUrl(url) {
-      return `/api/proxy?url=${encodeURIComponent(url)}`
-    }
-
-    // Play source
-    function playSource(source) {
-      const video = document.getElementById('player')
-      const currentTime = video.currentTime || 0
-
-      if (source.hls) {
-        loadHlsJs(() => {
-          if (window.Hls && Hls.isSupported()) {
-            const hls = new Hls()
-            hls.loadSource(proxyUrl(source.url))
-            hls.attachMedia(video)
-            hls.on('hlsManifestParsed', () => {
-              video.currentTime = currentTime
-              video.play().catch(() => {})
-            })
-          } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            // Safari native HLS — also needs proxy
-            video.src = proxyUrl(source.url)
-            video.currentTime = currentTime
-            video.play().catch(() => {})
-          } else {
-            setStatus('HLS not supported on this browser', true)
-          }
-        })
-      } else {
-        video.src = source.url
-        video.currentTime = currentTime
-        video.play().catch(() => {})
-      }
-    }
-
-    // Render quality buttons
-    function renderQualityBar() {
-      const bar = document.getElementById('quality-bar')
-      bar.innerHTML = ''
-
-      state.sources.forEach((source, index) => {
-        const btn = document.createElement('button')
-        btn.className = 'quality-btn'
-        btn.textContent = source.resolution || `Quality ${index + 1}`
-        if (index === 0) btn.classList.add('active')
-
-        btn.addEventListener('click', () => {
-          document.querySelectorAll('.quality-btn').forEach(b => b.classList.remove('active'))
-          btn.classList.add('active')
-          playSource(source)
-        })
-
-        bar.appendChild(btn)
-      })
-    }
-
-    // Load episode and resolve sources
-    async function loadEpisode(e, animeId, epNo) {
-      state.currentAnimeId = animeId
-      state.currentEp = epNo
-
-      // Highlight clicked episode
-      document.querySelectorAll('.episode-btn').forEach(btn => {
-        btn.classList.remove('active')
-      })
-      e.currentTarget.classList.add('active')
-
-      setStatus(`Loading episode ${epNo}...`, false, true)
-
-      try {
-        const res = await fetch(`/api/resolve?id=${encodeURIComponent(animeId)}&ep=${encodeURIComponent(epNo)}&mode=${state.mode}`)
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-
-        const data = await res.json()
-        state.sources = data.sources || []
-
-        if (state.sources.length === 0) {
-          setStatus('No sources available', true)
-          return
-        }
-
-        // Show player section
-        document.getElementById('player-section').hidden = false
-
-        renderQualityBar()
-
-        // Play best quality
-        const bestSource = state.sources[0]
-        if (bestSource.hls) {
-          loadHlsJs(() => playSource(bestSource))
-        } else {
-          playSource(bestSource)
-        }
-
-        // Save to history (track all watched episodes per anime)
-        if (!state.history[animeId]) state.history[animeId] = []
-        if (!state.history[animeId].includes(epNo)) state.history[animeId].push(epNo)
-        saveHistory()
-
-        clearStatus()
-      } catch (error) {
-        setStatus(`Error loading episode: ${error.message}`, true)
-      }
-    }
-
-    // Load episodes for anime
-    async function loadEpisodes(id, title) {
-      state.currentAnimeId = id
-      state.currentTitle = title
-
-      setStatus('Loading episodes...', false, true)
-
-      try {
-        const res = await fetch(`/api/episodes?id=${encodeURIComponent(id)}&mode=${state.mode}`)
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-
-        // API returns an array directly, not { episodes: [] }
-        const episodes = await res.json()
-
-        if (!Array.isArray(episodes) || episodes.length === 0) {
-          setStatus('No episodes found', true)
-          return
-        }
-
-        // Show episode section
-        document.getElementById('episode-section').hidden = false
-        document.getElementById('anime-title').textContent = title
-
-        const episodesDiv = document.getElementById('episodes')
-        episodesDiv.innerHTML = ''
-
-        episodes.forEach(epNo => {
-          const btn = document.createElement('button')
-          btn.className = 'episode-btn'
-          btn.textContent = `Ep ${epNo}`
-
-          // Mark watched episodes
-          if (state.history[id]?.includes(epNo)) {
-            btn.classList.add('watched')
-            btn.textContent += ' (watched)'
-          }
-
-          btn.addEventListener('click', (e) => loadEpisode(e, id, epNo))
-          episodesDiv.appendChild(btn)
-        })
-
-        // Hide stale video
-        document.getElementById('player-section').hidden = true
-
-        clearStatus()
-      } catch (error) {
-        setStatus(`Error loading episodes: ${error.message}`, true)
-      }
     }
 
     // Render search results
@@ -352,8 +129,20 @@
 
       results.forEach(item => {
         const li = document.createElement('li')
-        li.textContent = `${item.title} (${item.episodes ?? '?'} episodes)`
-        li.addEventListener('click', () => loadEpisodes(item.id, item.title))
+        const title = document.createElement('div')
+        title.textContent = item.title
+        
+        const episodes = document.createElement('small')
+        episodes.textContent = `${item.episodes ?? '?'} episodes`
+        
+        li.appendChild(title)
+        li.appendChild(episodes)
+        
+        li.addEventListener('click', () => {
+          const url = `/anime.html?id=${encodeURIComponent(item.id)}&title=${encodeURIComponent(item.title)}&mode=${state.mode}`
+          window.location.href = url
+        })
+        
         resultsList.appendChild(li)
       })
     }
@@ -371,7 +160,12 @@
       // Clear old results
       document.getElementById('results').innerHTML = ''
 
-      setStatus('Searching...', false, true)
+      // Set button to busy state
+      const btn = document.getElementById('search-btn')
+      btn.setAttribute('aria-busy', 'true')
+      btn.disabled = true
+
+      setStatus('Searching...')
 
       try {
         const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&mode=${state.mode}`)
@@ -389,6 +183,10 @@
         clearStatus()
       } catch (error) {
         setStatus(`Error searching: ${error.message}`, true)
+      } finally {
+        // Remove busy state
+        btn.removeAttribute('aria-busy')
+        btn.disabled = false
       }
     }
 

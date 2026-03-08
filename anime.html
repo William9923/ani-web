@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ani-web</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.classless.min.css">
+  <style>
+    /* Compact overrides — Pico's defaults are generous, tighten for this use case */
+    :root {
+      --pico-font-size: 16px;
+    }
+
+    body > main {
+      max-width: 860px;
+    }
+
+    a.back-link {
+      display: inline-block;
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+    }
+
+    h1 {
+      margin-bottom: 0.25rem;
+    }
+
+    #status {
+      min-height: 1.4rem;
+      font-size: 0.9rem;
+      color: var(--pico-muted-color);
+      margin: 0.5rem 0;
+    }
+
+    #status.error {
+      color: var(--pico-del-color, #c0392b);
+    }
+
+    #load-bar {
+      display: none;
+      margin: 0.5rem 0;
+    }
+
+    #episode-section {
+      margin: 1rem 0;
+    }
+
+    #episodes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin: 0.5rem 0;
+    }
+
+    .episode-btn {
+      padding: 0.4rem 0.8rem;
+      font-size: 0.85rem;
+      background: var(--pico-button-background-color);
+      color: var(--pico-button-color);
+      border: 1px solid var(--pico-button-border-color);
+      border-radius: var(--pico-border-radius);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .episode-btn:hover {
+      background: var(--pico-button-hover-background-color);
+    }
+
+    .episode-btn.active {
+      background: var(--pico-form-element-active-background-color);
+      border-color: var(--pico-form-element-active-border-color);
+    }
+
+    .episode-btn.watched {
+      opacity: 0.65;
+    }
+
+    #player-section {
+      margin: 1rem 0;
+    }
+
+    #player {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      display: block;
+    }
+
+    #quality-bar {
+      margin-top: 0.5rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .quality-btn {
+      padding: 0.4rem 0.8rem;
+      font-size: 0.85rem;
+      background: var(--pico-button-background-color);
+      color: var(--pico-button-color);
+      border: 1px solid var(--pico-button-border-color);
+      border-radius: var(--pico-border-radius);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .quality-btn:hover {
+      background: var(--pico-button-hover-background-color);
+    }
+
+    .quality-btn.active {
+      background: var(--pico-form-element-active-background-color);
+      border-color: var(--pico-form-element-active-border-color);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <a href="/" class="back-link">← Back</a>
+    <h1 id="anime-title">…</h1>
+    <progress id="load-bar"></progress>
+    <p id="status"></p>
+
+    <section id="episode-section">
+      <div id="episodes"></div>
+    </section>
+
+    <section id="player-section" hidden>
+      <video id="player" controls playsinline></video>
+      <div id="quality-bar"></div>
+    </section>
+  </main>
+
+  <script>
+    const state = {
+      mode: 'sub',
+      animeId: null,
+      animeTitle: null,
+      currentEp: null,
+      sources: [],
+      history: {},
+      hlsInstance: null,
+      videoListenersAttached: false
+    }
+
+    // Load history from localStorage
+    function loadHistory() {
+      try {
+        const stored = localStorage.getItem('ani-web-history')
+        if (stored) {
+          state.history = JSON.parse(stored)
+        }
+      } catch (e) {
+        state.history = {}
+      }
+    }
+
+    // Save history to localStorage
+    function saveHistory() {
+      localStorage.setItem('ani-web-history', JSON.stringify(state.history))
+    }
+
+    // Set status message
+    function setStatus(message, isError = false) {
+      const el = document.getElementById('status')
+      el.textContent = message
+      el.className = ''
+      if (isError) el.classList.add('error')
+    }
+
+    // Clear status
+    function clearStatus() {
+      document.getElementById('status').textContent = ''
+    }
+
+    // Show loading indicator
+    function showLoading() {
+      document.getElementById('load-bar').style.display = ''
+    }
+
+    // Hide loading indicator
+    function hideLoading() {
+      document.getElementById('load-bar').style.display = 'none'
+    }
+
+    // Lazy load HLS.js
+    function loadHlsJs(callback) {
+      if (window.Hls) {
+        callback()
+        return
+      }
+
+      const script = document.createElement('script')
+      script.src = 'https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js'
+      script.onload = callback
+      script.onerror = () => {
+        setStatus('Failed to load HLS.js', true)
+      }
+      document.head.appendChild(script)
+    }
+
+    // Generate proxy URL
+    function proxyUrl(url) {
+      return `/api/proxy?url=${encodeURIComponent(url)}`
+    }
+
+    // Attach video event listeners for loading indicator
+    function attachVideoListeners() {
+      if (state.videoListenersAttached) return
+
+      const video = document.getElementById('player')
+      video.addEventListener('waiting', showLoading)
+      video.addEventListener('playing', hideLoading)
+      video.addEventListener('canplay', hideLoading)
+      state.videoListenersAttached = true
+    }
+
+    // Play source
+    function playSource(source) {
+      const video = document.getElementById('player')
+
+      // Destroy previous HLS instance
+      if (state.hlsInstance) {
+        state.hlsInstance.destroy()
+        state.hlsInstance = null
+      }
+
+      // Attach video listeners once
+      attachVideoListeners()
+
+      if (source.hls) {
+        loadHlsJs(() => {
+          if (window.Hls && Hls.isSupported()) {
+            const hls = new Hls()
+            state.hlsInstance = hls
+            hls.loadSource(proxyUrl(source.url))
+            hls.attachMedia(video)
+            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+              video.play().catch(() => {})
+            })
+          } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            // Safari native HLS
+            video.src = proxyUrl(source.url)
+            video.play().catch(() => {})
+          } else {
+            setStatus('HLS not supported on this browser', true)
+          }
+        })
+      } else {
+        video.src = source.url
+        video.play().catch(() => {})
+      }
+    }
+
+    // Render quality bar
+    function renderQualityBar() {
+      const qualityBar = document.getElementById('quality-bar')
+      qualityBar.innerHTML = ''
+
+      if (!state.sources || state.sources.length === 0) return
+
+      state.sources.forEach((source, index) => {
+        const btn = document.createElement('button')
+        btn.className = 'quality-btn'
+        if (index === 0) btn.classList.add('active')
+        btn.textContent = source.resolution || `Quality ${index + 1}`
+        btn.addEventListener('click', () => {
+          // Remove active from all
+          document.querySelectorAll('.quality-btn').forEach(b => b.classList.remove('active'))
+          btn.classList.add('active')
+          playSource(source)
+        })
+        qualityBar.appendChild(btn)
+      })
+    }
+
+    // Load episode
+    async function loadEpisode(e, epNo) {
+      const btn = e.currentTarget
+      const episodesList = document.getElementById('episodes')
+
+      // Highlight active episode button
+      episodesList.querySelectorAll('.episode-btn').forEach(b => b.classList.remove('active'))
+      btn.classList.add('active')
+
+      // Set busy state
+      btn.setAttribute('aria-busy', 'true')
+      btn.disabled = true
+      showLoading()
+
+      try {
+        const res = await fetch(`/api/resolve?id=${encodeURIComponent(state.animeId)}&ep=${encodeURIComponent(epNo)}&mode=${state.mode}`)
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+        const data = await res.json()
+        state.sources = data.sources || []
+        state.currentEp = epNo
+
+        // Show player section
+        document.getElementById('player-section').removeAttribute('hidden')
+
+        // Render quality bar and play first source
+        renderQualityBar()
+        if (state.sources.length > 0) {
+          playSource(state.sources[0])
+        }
+
+        // Save to history
+        if (!state.history[state.animeId]) {
+          state.history[state.animeId] = []
+        }
+        if (!state.history[state.animeId].includes(epNo)) {
+          state.history[state.animeId].push(epNo)
+        }
+        saveHistory()
+
+        // Update watched indicator on the active button
+        btn.textContent = `Ep ${epNo} ✓`
+        btn.classList.add('watched')
+
+        clearStatus()
+      } catch (error) {
+        setStatus(`Error loading episode: ${error.message}`, true)
+      } finally {
+        btn.removeAttribute('aria-busy')
+        btn.disabled = false
+        hideLoading()
+      }
+    }
+
+    // Load episodes list
+    async function loadEpisodes() {
+      showLoading()
+
+      try {
+        const res = await fetch(`/api/episodes?id=${encodeURIComponent(state.animeId)}&mode=${state.mode}`)
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+
+        const episodes = await res.json()
+
+        if (!Array.isArray(episodes) || episodes.length === 0) {
+          setStatus('No episodes found', true)
+          return
+        }
+
+        const episodesList = document.getElementById('episodes')
+        episodesList.innerHTML = ''
+
+        const watched = state.history[state.animeId] || []
+
+        episodes.forEach(epNo => {
+          const btn = document.createElement('button')
+          btn.className = 'episode-btn'
+          const isWatched = watched.includes(epNo)
+          if (isWatched) btn.classList.add('watched')
+          btn.textContent = `Ep ${epNo}${isWatched ? ' ✓' : ''}`
+          btn.addEventListener('click', (e) => loadEpisode(e, epNo))
+          episodesList.appendChild(btn)
+        })
+
+        clearStatus()
+      } catch (error) {
+        setStatus(`Error loading episodes: ${error.message}`, true)
+      } finally {
+        hideLoading()
+      }
+    }
+
+    // Initialize on DOMContentLoaded
+    document.addEventListener('DOMContentLoaded', () => {
+      const params = new URLSearchParams(window.location.search)
+      const id = params.get('id')
+      const title = params.get('title')
+      const mode = params.get('mode')
+
+      if (!id) {
+        window.location.href = '/'
+        return
+      }
+
+      state.animeId = id
+      state.animeTitle = title || 'Anime'
+      state.mode = mode || 'sub'
+
+      document.title = `${state.animeTitle} — ani-web`
+      document.getElementById('anime-title').textContent = state.animeTitle
+
+      loadHistory()
+      loadEpisodes()
+    })
+  </script>
+</body>
+</html>
