@@ -11,6 +11,21 @@
   <!-- Pico CSS -->
   <link rel="preload" as="style" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.classless.min.css" onload="this.onload=null;this.rel='stylesheet'">
   <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.classless.min.css"></noscript>
+  <script>
+    // Generate favicon from kaomoji — no image file needed
+    const canvas = document.createElement('canvas')
+    canvas.width = 64
+    canvas.height = 64
+    const ctx = canvas.getContext('2d')
+    ctx.font = '44px serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('ﾉ◕', 32, 32)
+    const link = document.createElement('link')
+    link.rel = 'icon'
+    link.href = canvas.toDataURL()
+    document.head.appendChild(link)
+  </script>
 
   <!-- Plyr CSS -->
   <link rel="preload" as="style" href="https://cdn.plyr.io/3.8.4/plyr.css" onload="this.onload=null;this.rel='stylesheet'">
@@ -20,6 +35,10 @@
     /* Compact overrides — Pico's defaults are generous, tighten for this use case */
     :root {
       --pico-font-size: 16px;
+      /* Accent color used across all interactive elements */
+      --ani-accent: #ff0000;
+      --ani-accent-hover: #cc0000;
+      --ani-accent-light: #fff0f0;
     }
 
     body > main {
@@ -48,8 +67,19 @@
     }
 
     #load-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 3px;
+      margin: 0;
+      padding: 0;
+      border: none;
+      border-radius: 0;
       display: none;
-      margin: 0.5rem 0;
+      z-index: 9999;
+      background: #e8e8e8;
+      accent-color: var(--ani-accent);
     }
 
     #episode-section {
@@ -66,25 +96,29 @@
     .episode-btn {
       padding: 0.4rem 0.8rem;
       font-size: 0.85rem;
-      background: var(--pico-button-background-color);
-      color: var(--pico-button-color);
-      border: 1px solid var(--pico-button-border-color);
+      background: #fff;
+      color: #333;
+      border: 1px solid #ccc;
       border-radius: var(--pico-border-radius);
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: border-color 0.15s, background 0.15s, color 0.15s;
     }
 
     .episode-btn:hover {
-      background: var(--pico-button-hover-background-color);
+      border-color: var(--ani-accent);
+      color: var(--ani-accent);
+      background: var(--ani-accent-light);
     }
 
     .episode-btn.active {
-      background: var(--pico-form-element-active-background-color);
-      border-color: var(--pico-form-element-active-border-color);
+      background: var(--ani-accent);
+      border-color: var(--ani-accent);
+      color: #fff;
+      font-weight: 600;
     }
 
     .episode-btn.watched {
-      opacity: 0.65;
+      opacity: 0.55;
     }
 
     #player-section {
@@ -94,8 +128,6 @@
     /* Plyr container — ensures proper aspect ratio and sizing */
     .plyr__video-wrapper {
       background: #000;
-      border-radius: var(--pico-border-radius);
-      overflow: hidden;
     }
 
     video {
@@ -117,27 +149,34 @@
     .quality-btn {
       padding: 0.4rem 0.8rem;
       font-size: 0.85rem;
-      background: var(--pico-button-background-color);
-      color: var(--pico-button-color);
-      border: 1px solid var(--pico-button-border-color);
+      background: #fff;
+      color: #333;
+      border: 1px solid #ccc;
       border-radius: var(--pico-border-radius);
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: border-color 0.15s, background 0.15s, color 0.15s;
     }
 
     .quality-btn:hover {
-      background: var(--pico-button-hover-background-color);
+      border-color: var(--ani-accent);
+      color: var(--ani-accent);
+      background: var(--ani-accent-light);
     }
 
     .quality-btn.active {
-      background: var(--pico-form-element-active-background-color);
-      border-color: var(--pico-form-element-active-border-color);
-      font-weight: bold;
+      background: var(--ani-accent);
+      border-color: var(--ani-accent);
+      color: #fff;
+      font-weight: 600;
     }
 
-    /* Ensure Plyr controls are visible on dark backgrounds */
+    /* Plyr — YouTube-style red accent */
     .plyr {
-      --plyr-color-main: #fff;
+      --plyr-color-main: var(--ani-accent);
+      border: 1px solid #e0e0e0;
+      border-radius: var(--pico-border-radius, 0.25rem);
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
     }
 
     /* Keyboard shortcut help text */
@@ -616,7 +655,7 @@
       state.animeTitle = title || 'Anime'
       state.mode = mode || 'sub'
 
-      document.title = `${state.animeTitle} — ani-web`
+      document.title = `${state.animeTitle} — (ﾉ◕ヮ◕)ﾉ ani-web`
       document.getElementById('anime-title').textContent = state.animeTitle
 
       loadHistory()

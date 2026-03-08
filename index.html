@@ -3,11 +3,26 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ani-web</title>
+  <title>(ﾉ◕ヮ◕)ﾉ ani-web</title>
   <meta name="description" content="Search and watch anime in your browser — lightweight, no sign-up required.">
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="preload" as="style" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.classless.min.css" onload="this.onload=null;this.rel='stylesheet'">
   <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.classless.min.css"></noscript>
+  <script>
+    // Generate favicon from kaomoji — no image file needed
+    const canvas = document.createElement('canvas')
+    canvas.width = 64
+    canvas.height = 64
+    const ctx = canvas.getContext('2d')
+    ctx.font = '44px serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('ﾉ◕', 32, 32)
+    const link = document.createElement('link')
+    link.rel = 'icon'
+    link.href = canvas.toDataURL()
+    document.head.appendChild(link)
+  </script>
   <style>
     /* Compact overrides — Pico's defaults are generous, tighten for this use case */
     :root {
@@ -72,7 +87,7 @@
 </head>
 <body>
   <main>
-    <h1>ani-web</h1>
+    <h1>(ﾉ◕ヮ◕)ﾉ ani-web</h1>
     <p><small>Search anime to watch</small></p>
 
     <form id="search-form">
