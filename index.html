@@ -4,209 +4,110 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ani-web</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.classless.min.css">
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
+    /* Compact overrides — Pico's defaults are generous, tighten for this use case */
+    :root {
+      --pico-font-size: 16px;
     }
 
-    body {
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 1rem;
-      font-family: sans-serif;
-      line-height: 1.5;
-      color: #000;
-      background: #fff;
+    body > main {
+      max-width: 860px;
     }
 
-    main {
-      width: 100%;
-    }
-
-    h1, h2 {
-      margin-top: 1.5rem;
-      margin-bottom: 1rem;
-    }
-
-    h1 {
-      font-size: 2rem;
-    }
-
-    h2 {
-      font-size: 1.5rem;
-    }
+    h1 { margin-bottom: 0.25rem; }
 
     #search-form {
       display: flex;
       flex-wrap: wrap;
       gap: 0.5rem;
-      margin-bottom: 1rem;
       align-items: center;
+      margin-bottom: 0.5rem;
     }
 
-    #search-input {
+    #search-form input[type="text"] {
       flex: 1;
-      min-width: 200px;
-      padding: 0.5rem;
-      font-size: 1rem;
-      border: 1px solid #ccc;
-      border-radius: 4px;
+      min-width: 180px;
+      margin-bottom: 0;
+    }
+
+    #search-form select {
+      width: auto;
+      margin-bottom: 0;
     }
 
     #search-form button {
-      padding: 0.5rem 1rem;
-      font-size: 1rem;
-      background: #000;
-      color: #fff;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-
-    #search-form button:hover {
-      background: #333;
-    }
-
-    #search-form label {
-      display: flex;
-      align-items: center;
-      gap: 0.25rem;
-      cursor: pointer;
-      font-size: 0.9rem;
-    }
-
-    #search-form input[type="radio"] {
-      cursor: pointer;
+      width: auto;
+      margin-bottom: 0;
     }
 
     #status {
-      margin: 1rem 0;
-      min-height: 1.5rem;
+      min-height: 1.4rem;
       font-size: 0.9rem;
+      color: var(--pico-muted-color);
+      margin: 0.5rem 0;
     }
 
-    #status.error {
-      color: #d32f2f;
-    }
+    #status.error { color: var(--pico-del-color, #c0392b); }
 
-    #status.loading {
-      color: #666;
-    }
-
+    /* Results list — clickable rows */
     #results {
+      padding-left: 0;
       list-style: none;
-      margin: 1rem 0;
+      margin: 0.5rem 0;
     }
 
     #results li {
-      padding: 0.75rem 0;
-      border-bottom: 1px solid #eee;
+      padding: 0.6rem 0.25rem;
+      border-bottom: 1px solid var(--pico-table-border-color);
       cursor: pointer;
-      user-select: none;
     }
 
-    #results li:hover {
-      background: #f5f5f5;
-    }
+    #results li:last-child { border-bottom: none; }
+    #results li:hover { background: var(--pico-code-background-color); }
 
-    #results li:last-child {
-      border-bottom: none;
-    }
-
-    #episode-section {
-      margin-top: 2rem;
-    }
-
-    #episodes {
+    /* Episode + quality buttons — compact inline grid */
+    #episodes, #quality-bar {
       display: flex;
       flex-wrap: wrap;
-      gap: 0.5rem;
-      margin-bottom: 1rem;
+      gap: 0.4rem;
+      margin: 0.75rem 0;
     }
 
-    .episode-btn {
-      padding: 0.5rem 0.75rem;
-      font-size: 0.85rem;
-      background: #f0f0f0;
-      border: 1px solid #ccc;
-      border-radius: 4px;
+    .episode-btn, .quality-btn {
+      padding: 0.3rem 0.6rem;
+      font-size: 0.82rem;
       cursor: pointer;
-      transition: background 0.1s;
+      /* Use Pico's secondary outline style */
+      background: transparent;
+      border: 1px solid var(--pico-secondary);
+      color: var(--pico-secondary);
+      border-radius: var(--pico-border-radius);
     }
 
-    .episode-btn:hover {
-      background: #e0e0e0;
+    .episode-btn:hover, .quality-btn:hover {
+      background: var(--pico-secondary-hover-background);
+      color: var(--pico-secondary-inverse);
     }
 
-    .episode-btn.active {
-      background: #000;
-      color: #fff;
-      font-weight: bold;
+    .episode-btn.active, .quality-btn.active {
+      background: var(--pico-primary-background);
+      border-color: var(--pico-primary-border);
+      color: var(--pico-primary-inverse);
     }
 
-    .episode-btn.watched {
-      font-weight: bold;
-    }
-
-    #player-section {
-      margin-top: 2rem;
-    }
+    .episode-btn.watched { font-weight: bold; }
 
     #player {
       width: 100%;
-      max-height: 70vh;
+      aspect-ratio: 16 / 9;
       background: #000;
       display: block;
-      margin-top: 1rem;
-      border-radius: 4px;
+      border-radius: var(--pico-border-radius);
+      margin-top: 0.5rem;
     }
 
-    #quality-bar {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      margin-top: 1rem;
-    }
-
-    .quality-btn {
-      padding: 0.5rem 0.75rem;
-      font-size: 0.85rem;
-      background: #f0f0f0;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      cursor: pointer;
-      transition: background 0.1s;
-    }
-
-    .quality-btn:hover {
-      background: #e0e0e0;
-    }
-
-    .quality-btn.active {
-      background: #000;
-      color: #fff;
-      font-weight: bold;
-    }
-
-    @media (max-width: 600px) {
-      #search-form {
-        flex-direction: column;
-      }
-
-      #search-input {
-        width: 100%;
-      }
-
-      #search-form button {
-        width: 100%;
-      }
-
-      h1 {
-        font-size: 1.5rem;
-      }
-    }
+    #episode-section, #player-section { margin-top: 1.5rem; }
   </style>
 </head>
 <body>
@@ -215,9 +116,11 @@
 
     <form id="search-form">
       <input id="search-input" type="text" placeholder="Search anime..." autocomplete="off" autofocus>
+      <select id="mode-select">
+        <option value="sub" selected>Sub</option>
+        <option value="dub">Dub</option>
+      </select>
       <button type="submit">Search</button>
-      <label><input type="radio" name="mode" value="sub" checked> Sub</label>
-      <label><input type="radio" name="mode" value="dub"> Dub</label>
     </form>
 
     <p id="status"></p>
@@ -286,6 +189,11 @@
       document.head.appendChild(script)
     }
 
+    // Wrap a URL through our server-side proxy (needed for CDNs that block browser requests)
+    function proxyUrl(url) {
+      return `/api/proxy?url=${encodeURIComponent(url)}`
+    }
+
     // Play source
     function playSource(source) {
       const video = document.getElementById('player')
@@ -295,14 +203,15 @@
         loadHlsJs(() => {
           if (window.Hls && Hls.isSupported()) {
             const hls = new Hls()
-            hls.loadSource(source.url)
+            hls.loadSource(proxyUrl(source.url))
             hls.attachMedia(video)
             hls.on('hlsManifestParsed', () => {
               video.currentTime = currentTime
               video.play().catch(() => {})
             })
           } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            video.src = source.url
+            // Safari native HLS — also needs proxy
+            video.src = proxyUrl(source.url)
             video.currentTime = currentTime
             video.play().catch(() => {})
           } else {
@@ -338,7 +247,7 @@
     }
 
     // Load episode and resolve sources
-    async function loadEpisode(animeId, epNo) {
+    async function loadEpisode(e, animeId, epNo) {
       state.currentAnimeId = animeId
       state.currentEp = epNo
 
@@ -346,7 +255,7 @@
       document.querySelectorAll('.episode-btn').forEach(btn => {
         btn.classList.remove('active')
       })
-      event.target.classList.add('active')
+      e.currentTarget.classList.add('active')
 
       setStatus(`Loading episode ${epNo}...`, false, true)
 
@@ -375,8 +284,9 @@
           playSource(bestSource)
         }
 
-        // Save to history
-        state.history[animeId] = epNo
+        // Save to history (track all watched episodes per anime)
+        if (!state.history[animeId]) state.history[animeId] = []
+        if (!state.history[animeId].includes(epNo)) state.history[animeId].push(epNo)
         saveHistory()
 
         clearStatus()
@@ -396,10 +306,10 @@
         const res = await fetch(`/api/episodes?id=${encodeURIComponent(id)}&mode=${state.mode}`)
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
-        const data = await res.json()
-        const episodes = data.episodes || []
+        // API returns an array directly, not { episodes: [] }
+        const episodes = await res.json()
 
-        if (episodes.length === 0) {
+        if (!Array.isArray(episodes) || episodes.length === 0) {
           setStatus('No episodes found', true)
           return
         }
@@ -417,12 +327,12 @@
           btn.textContent = `Ep ${epNo}`
 
           // Mark watched episodes
-          if (state.history[id] === epNo) {
+          if (state.history[id]?.includes(epNo)) {
             btn.classList.add('watched')
             btn.textContent += ' (watched)'
           }
 
-          btn.addEventListener('click', () => loadEpisode(id, epNo))
+          btn.addEventListener('click', (e) => loadEpisode(e, id, epNo))
           episodesDiv.appendChild(btn)
         })
 
@@ -442,7 +352,7 @@
 
       results.forEach(item => {
         const li = document.createElement('li')
-        li.textContent = `${item.title} (${item.episodeCount || '?'} episodes)`
+        li.textContent = `${item.title} (${item.episodes ?? '?'} episodes)`
         li.addEventListener('click', () => loadEpisodes(item.id, item.title))
         resultsList.appendChild(li)
       })
@@ -467,10 +377,10 @@
         const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&mode=${state.mode}`)
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
-        const data = await res.json()
-        const results = data.results || []
+        // API returns an array directly, not { results: [] }
+        const results = await res.json()
 
-        if (results.length === 0) {
+        if (!Array.isArray(results) || results.length === 0) {
           setStatus('No results found')
           return
         }
@@ -482,23 +392,12 @@
       }
     }
 
-    // Mode switching
-    function handleModeChange(e) {
-      state.mode = e.target.value
-
-      if (state.currentAnimeId) {
-        loadEpisodes(state.currentAnimeId, state.currentTitle)
-      }
-    }
-
-    // Event listeners
-    document.getElementById('search-form').addEventListener('submit', handleSearch)
-    document.querySelectorAll('input[name="mode"]').forEach(radio => {
-      radio.addEventListener('change', handleModeChange)
-    })
-
     // Initialize
     loadHistory()
+    document.getElementById('mode-select').addEventListener('change', e => {
+      state.mode = e.target.value
+    })
+    document.getElementById('search-form').addEventListener('submit', handleSearch)
   </script>
 </body>
 </html>

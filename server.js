@@ -43,7 +43,7 @@ function decodeUrl(encoded) {
 // HTTPS GET WITH REDIRECT SUPPORT
 // ============================================================================
 
-function httpsGet(url, headers) {
+function httpsGet(url, headers, timeoutMs = 8000) {
   return new Promise((resolve, reject) => {
     let redirectCount = 0
     const maxRedirects = 5
@@ -53,7 +53,7 @@ function httpsGet(url, headers) {
         return reject(new Error('Too many redirects'))
       }
 
-      https.get(urlStr, { headers }, (res) => {
+      const req = https.get(urlStr, { headers }, (res) => {
         let data = ''
 
         // Handle redirects
@@ -63,6 +63,7 @@ function httpsGet(url, headers) {
         }
 
         if (res.statusCode !== 200) {
+          res.resume()
           return reject(new Error(`HTTP ${res.statusCode}`))
         }
 
@@ -74,6 +75,10 @@ function httpsGet(url, headers) {
           resolve(data)
         })
       }).on('error', reject)
+
+      req.setTimeout(timeoutMs, () => {
+        req.destroy(new Error(`Timeout after ${timeoutMs}ms`))
+      })
     }
 
     get(url)
@@ -188,42 +193,140 @@ async function handleResolve(res, id, ep, mode) {
     // Filter to decodable sources (starting with "--")
     const decodableSources = sourceUrls.filter((s) => s.sourceUrl?.startsWith('--'))
 
-    // Sort by priority descending
-    decodableSources.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
-
-    // Try each source in order
-    for (const source of decodableSources) {
-      try {
-        const decoded = decodeUrl(source.sourceUrl)
-        const sourceUrl = `https://${ALLANIME_BASE}${decoded}`
-
-        const sourceHeaders = {
-          'Referer': ALLANIME_REFR,
-          'User-Agent': USER_AGENT
-        }
-
-        const sourceBody = await httpsGet(sourceUrl, sourceHeaders)
-        const sourceData = JSON.parse(sourceBody)
-
-        if (sourceData.links && sourceData.links.length > 0) {
-          const sources = sourceData.links.map((link) => ({
-            url: link.link,
-            resolution: link.resolutionStr || 'unknown',
-            hls: link.hls ?? false
-          }))
-
-          return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ sources }))
-        }
-      } catch {
-        // Try next source silently
-        continue
-      }
+    if (decodableSources.length === 0) {
+      return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ sources: [] }))
     }
 
-    // All sources failed
-    res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ sources: [] }))
+    const sourceHeaders = { 'Referer': ALLANIME_REFR, 'User-Agent': USER_AGENT }
+
+    // Race all sources in parallel — like ani-cli does with background jobs
+    // Each attempt resolves with a sources array or rejects; Promise.any takes the first success
+    const attempts = decodableSources.map(async (source) => {
+      const decoded = decodeUrl(source.sourceUrl)
+
+      // If decoded URL is already absolute (e.g. https://tools.fast4...), use as-is
+      // Otherwise it's a relative path under allanime.day
+      const clockUrl = /^https?:\/\//i.test(decoded)
+        ? decoded
+        : `https://${ALLANIME_BASE}${decoded}`
+
+      const body = await httpsGet(clockUrl, sourceHeaders)
+      const data = JSON.parse(body)
+
+      if (!data.links || data.links.length === 0) throw new Error('no links')
+
+      return data.links.map((link) => ({
+        url: link.link,
+        resolution: link.resolutionStr || 'unknown',
+        hls: link.hls ?? false
+      }))
+    })
+
+    try {
+      const sources = await Promise.any(attempts)
+      return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ sources }))
+    } catch {
+      // All sources failed
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ sources: [] }))
+    }
   } catch (error) {
     res.writeHead(500, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: error.message }))
+  }
+}
+
+// ============================================================================
+// M3U8 PROXY
+// ============================================================================
+
+// Rewrite M3U8 playlist so all segment/sub-playlist URLs go through our proxy
+function rewriteM3u8(content, originalUrl) {
+  const base = new URL(originalUrl)
+  return content.split('\n').map(line => {
+    const trimmed = line.trim()
+    // Skip comments and empty lines
+    if (!trimmed || trimmed.startsWith('#')) return line
+    // Absolute URL
+    if (/^https?:\/\//i.test(trimmed)) {
+      return `/api/proxy?url=${encodeURIComponent(trimmed)}`
+    }
+    // Relative URL — resolve against the original M3U8 URL
+    const resolved = new URL(trimmed, base).toString()
+    return `/api/proxy?url=${encodeURIComponent(resolved)}`
+  }).join('\n')
+}
+
+async function handleProxy(res, targetUrl) {
+  if (!targetUrl) {
+    return res.writeHead(400, { 'Content-Type': 'text/plain' }).end('Missing url param')
+  }
+
+  // Only allow http/https
+  let parsed
+  try {
+    parsed = new URL(targetUrl)
+    if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('bad protocol')
+  } catch {
+    return res.writeHead(400, { 'Content-Type': 'text/plain' }).end('Invalid URL')
+  }
+
+  try {
+    const proxyHeaders = {
+      'User-Agent': USER_AGENT,
+      'Referer': ALLANIME_REFR,
+      'Origin': 'https://allmanga.to',
+    }
+
+    await new Promise((resolve, reject) => {
+      let redirectCount = 0
+      function get(urlStr) {
+        if (redirectCount >= 5) return reject(new Error('Too many redirects'))
+        https.get(urlStr, { headers: proxyHeaders }, (upstream) => {
+          if (upstream.statusCode >= 300 && upstream.statusCode < 400 && upstream.headers.location) {
+            redirectCount++
+            return get(upstream.headers.location)
+          }
+
+          if (upstream.statusCode !== 200) {
+            upstream.resume()
+            res.writeHead(upstream.statusCode, { 'Content-Type': 'text/plain' })
+            res.end(`Upstream ${upstream.statusCode}`)
+            return resolve()
+          }
+
+          const contentType = upstream.headers['content-type'] || ''
+          const isM3u8 = targetUrl.includes('.m3u8') || contentType.includes('mpegurl') || contentType.includes('x-mpegURL')
+
+          if (isM3u8) {
+            // Buffer the playlist, rewrite URLs, send as text
+            let body = ''
+            upstream.setEncoding('utf8')
+            upstream.on('data', chunk => { body += chunk })
+            upstream.on('end', () => {
+              const rewritten = rewriteM3u8(body, targetUrl)
+              res.writeHead(200, {
+                'Content-Type': 'application/vnd.apple.mpegurl',
+                'Access-Control-Allow-Origin': '*'
+              })
+              res.end(rewritten)
+              resolve()
+            })
+          } else {
+            // Binary passthrough (TS segments, keys, etc.)
+            res.writeHead(200, {
+              'Content-Type': contentType || 'application/octet-stream',
+              'Access-Control-Allow-Origin': '*'
+            })
+            upstream.pipe(res)
+            upstream.on('end', resolve)
+          }
+        }).on('error', reject)
+      }
+      get(targetUrl)
+    })
+  } catch (error) {
+    if (!res.headersSent) {
+      res.writeHead(502, { 'Content-Type': 'text/plain' }).end(`Proxy error: ${error.message}`)
+    }
   }
 }
 
@@ -285,6 +388,11 @@ async function requestHandler(req, res) {
     const ep = query.get('ep') || ''
     const mode = query.get('mode') || 'sub'
     return handleResolve(res, id, ep, mode)
+  }
+
+  if (pathname === '/api/proxy') {
+    const targetUrl = query.get('url') || ''
+    return handleProxy(res, targetUrl)
   }
 
   // 404
