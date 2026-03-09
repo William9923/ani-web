@@ -3,7 +3,11 @@
 
 # ani-web
 
-[Demo Video](docs/demo.webm)
+<img width="1133" height="940" alt="image" src="https://github.com/user-attachments/assets/12717e54-9d5a-47ac-b9bd-505fc8da7a05" />
+
+<img width="1173" height="880" alt="image" src="https://github.com/user-attachments/assets/369cfc2a-3484-46b5-8585-93c7cb0ea754" />
+
+
 
 A browser-based anime streaming frontend for [AllAnime](https://allmanga.to/).
 
@@ -23,12 +27,9 @@ This is an **exploratory/learning project** for educational purposes only.
 - [Features](#-features)
 - [Future Features](#-future-features)
 - [Quick Start](#-quick-start)
-- [Deployment](#-deployment)
-- [API Reference](#-api-reference)
 - [Tech Stack](#-tech-stack)
 - [FAQ](#-faq)
 - [Similar Projects](#-similar-projects)
-- [Support](#-support)
 
 ## ✨ Features
 
