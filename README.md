@@ -3,7 +3,7 @@
 
 # ani-web
 
-<!-- [Demo Video](docs/demo.webm) -->
+[Demo Video](docs/demo.webm)
 
 A browser-based anime streaming frontend for [AllAnime](https://allmanga.to/).
 
@@ -90,18 +90,23 @@ Navigate to [http://localhost:9001](http://localhost:9001)
 ## ❓ FAQ
 
 **Is this legal?**
+
 This is an exploratory project. Content is sourced from AllAnime. Please use responsibly and respect their terms of service.
 
 **Do I need an account?**
+
 No. ani-web works without any authentication.
 
 **Where is my watch history stored?**
+
 Watch history is saved in your browser's localStorage.
 
 **Can I download episodes?**
+
 No. ani-web is a streaming-only interface.
 
 **Does it work on mobile?**
+
 Yes, the interface is responsive and works on mobile browsers.
 
 ## 🤝 Similar Projects
