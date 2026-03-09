@@ -327,10 +327,21 @@
     }
 
     // =========================================================================
+    // CONFIGURATION
+    // =========================================================================
+
+    // Set to false to use direct URLs (bypasses proxy, but may fail if CDN blocks CORS)
+    const USE_PROXY = false;
+
+    // =========================================================================
     // PROXY & HLS SETUP
     // =========================================================================
 
     function proxyUrl(url) {
+      if (!USE_PROXY) {
+        console.log('Using direct URL (no proxy):', url);
+        return url;
+      }
       return `/api/proxy?url=${encodeURIComponent(url)}`
     }
 
