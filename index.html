@@ -24,9 +24,15 @@
     document.head.appendChild(link)
   </script>
   <style>
-    /* Compact overrides — Pico's defaults are generous, tighten for this use case */
     :root {
       --pico-font-size: 16px;
+      --ani-accent: #ff0000;
+      --ani-accent-hover: #cc0000;
+      --ani-accent-light: #fff0f0;
+    }
+
+    html[data-theme="dark"] {
+      --ani-accent-light: #2a0000;
     }
 
     body > main {
@@ -34,8 +40,38 @@
       padding-inline: 1rem;
     }
 
-    h1 { margin-bottom: 0.25rem; }
+    h1 {
+      margin-bottom: 0.25rem;
+    }
 
+    /* ── Dark mode toggle ── */
+    #theme-toggle {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      width: 2.5rem;
+      height: 2.5rem;
+      border-radius: 50%;
+      background: var(--pico-form-element-background-color);
+      border: 1px solid var(--pico-form-element-border-color);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      line-height: 1;
+      padding: 0;
+      transition: background 0.2s, transform 0.2s;
+      z-index: 999;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    }
+
+    #theme-toggle:hover {
+      transform: scale(1.1);
+      background: var(--ani-accent-light);
+    }
+
+    /* ── Search form ── */
     #search-form {
       display: flex;
       flex-wrap: wrap;
@@ -50,6 +86,11 @@
       margin-bottom: 0;
     }
 
+    #search-form input[type="search"]:focus {
+      border-color: var(--ani-accent);
+      box-shadow: 0 0 0 3px var(--ani-accent-light);
+    }
+
     #search-form select {
       width: auto;
       margin-bottom: 0;
@@ -58,8 +99,25 @@
     #search-form button {
       width: auto;
       margin-bottom: 0;
+      font-weight: 600;
+      background: var(--ani-accent);
+      border-color: var(--ani-accent);
+      color: #fff;
+      transition: background 0.2s, transform 0.15s, box-shadow 0.15s;
     }
 
+    #search-form button:hover:not([disabled]) {
+      background: var(--ani-accent-hover);
+      border-color: var(--ani-accent-hover);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 10px rgba(255,0,0,0.25);
+    }
+
+    #search-form button[aria-busy="true"] {
+      opacity: 0.75;
+    }
+
+    /* ── Status ── */
     #status {
       min-height: 1.4rem;
       font-size: 0.9rem;
@@ -67,9 +125,11 @@
       margin: 0.5rem 0;
     }
 
-    #status.error { color: var(--pico-del-color, #c0392b); }
+    #status.error {
+      color: var(--pico-del-color, #c0392b);
+    }
 
-    /* Results list — card-style articles */
+    /* ── Results ── */
     #results {
       margin: 0.5rem 0;
     }
@@ -77,15 +137,82 @@
     #results article {
       cursor: pointer;
       margin-bottom: 0.5rem;
-      transition: filter 0.1s;
+      border-left: 4px solid var(--ani-accent);
+      padding-left: 1rem;
+      transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
     }
 
     #results article:hover {
-      filter: brightness(0.96);
+      transform: translateX(4px);
+      box-shadow: 0 4px 14px rgba(255,0,0,0.12);
+      border-left-color: var(--ani-accent-hover);
+    }
+
+    .result-title {
+      flex: 1;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .result-meta {
+      font-size: 0.82rem;
+      color: var(--pico-muted-color);
+      white-space: nowrap;
+    }
+
+    .result-chevron {
+      color: var(--ani-accent);
+      font-size: 1.4rem;
+      opacity: 0.45;
+      transition: opacity 0.15s;
+      line-height: 1;
+    }
+
+    #results article:hover .result-chevron {
+      opacity: 1;
+    }
+
+    /* ── Skeleton loaders ── */
+    .skeleton-card {
+      height: 62px;
+      background: linear-gradient(90deg,
+        var(--pico-form-element-background-color) 25%,
+        var(--ani-accent-light) 50%,
+        var(--pico-form-element-background-color) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      margin-bottom: 0.5rem;
+      border-radius: var(--pico-border-radius, 6px);
+      border-left: 4px solid color-mix(in srgb, var(--ani-accent) 30%, transparent);
+    }
+
+    @keyframes shimmer {
+      0%   { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    /* ── Empty state ── */
+    #results.empty {
+      text-align: center;
+      padding: 2.5rem 1rem;
+      color: var(--pico-muted-color);
+      font-size: 0.95rem;
+    }
+
+    #results.empty .empty-icon {
+      font-size: 3rem;
+      display: block;
+      margin-bottom: 0.75rem;
     }
   </style>
 </head>
 <body>
+  <button id="theme-toggle" aria-label="Toggle dark mode">🌙</button>
+
   <main>
     <h1>(ﾉ◕ヮ◕)ﾉ ani-web</h1>
     <p><small>Search anime to watch</small></p>
@@ -144,29 +271,34 @@
     function renderResults(results) {
       const resultsList = document.getElementById('results')
       resultsList.innerHTML = ''
+      resultsList.classList.remove('empty')
 
-      results.forEach(item => {
+      if (!results || results.length === 0) {
+        resultsList.classList.add('empty')
+        resultsList.innerHTML = '<span class="empty-icon">🔍</span><p>No results found. Try a different title.</p>'
+        return
+      }
+
+      results.forEach((item, i) => {
         const article = document.createElement('article')
-        article.style.cursor = 'pointer'
+        article.style.animationDelay = `${i * 40}ms`
 
-        const row = document.createElement('div')
-        row.style.cssText = 'display:flex; justify-content:space-between; align-items:center;'
+        const titleEl = document.createElement('span')
+        titleEl.className = 'result-title'
+        titleEl.textContent = item.title
 
-        const title = document.createElement('strong')
-        title.textContent = item.title
+        const metaEl = document.createElement('span')
+        metaEl.className = 'result-meta'
+        metaEl.textContent = `${item.episodes ?? '?'} ep`
 
-        const chevron = document.createElement('span')
-        chevron.textContent = '›'
-        chevron.setAttribute('aria-hidden', 'true')
+        const chevronEl = document.createElement('span')
+        chevronEl.className = 'result-chevron'
+        chevronEl.textContent = '›'
+        chevronEl.setAttribute('aria-hidden', 'true')
 
-        row.appendChild(title)
-        row.appendChild(chevron)
-
-        const episodes = document.createElement('small')
-        episodes.textContent = `${item.episodes ?? '?'} episodes`
-
-        article.appendChild(row)
-        article.appendChild(episodes)
+        article.appendChild(titleEl)
+        article.appendChild(metaEl)
+        article.appendChild(chevronEl)
 
         article.addEventListener('click', () => {
           const url = `/anime.html?id=${encodeURIComponent(item.id)}&title=${encodeURIComponent(item.title)}&mode=${state.mode}`
@@ -187,15 +319,20 @@
         return
       }
 
-      // Clear old results
-      document.getElementById('results').innerHTML = ''
+      // Show skeleton loaders
+      const skeletonContainer = document.getElementById('results')
+      skeletonContainer.classList.remove('empty')
+      skeletonContainer.innerHTML = ''
+      for (let i = 0; i < 5; i++) {
+        const sk = document.createElement('div')
+        sk.className = 'skeleton-card'
+        skeletonContainer.appendChild(sk)
+      }
 
       // Set button to busy state
       const btn = document.getElementById('search-btn')
       btn.setAttribute('aria-busy', 'true')
       btn.disabled = true
-
-      setStatus('Searching...')
 
       try {
         const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&mode=${state.mode}`)
@@ -205,7 +342,7 @@
         const results = await res.json()
 
         if (!Array.isArray(results) || results.length === 0) {
-          setStatus('No results found')
+          renderResults([])
           return
         }
 
@@ -226,6 +363,21 @@
       state.mode = e.target.value
     })
     document.getElementById('search-form').addEventListener('submit', handleSearch)
+
+    // Dark mode
+    ;(function initTheme() {
+      const saved = localStorage.getItem('ani-web-theme') || 'light'
+      document.documentElement.setAttribute('data-theme', saved)
+      const btn = document.getElementById('theme-toggle')
+      btn.textContent = saved === 'light' ? '🌙' : '☀️'
+      btn.addEventListener('click', () => {
+        const current = document.documentElement.getAttribute('data-theme')
+        const next = current === 'light' ? 'dark' : 'light'
+        document.documentElement.setAttribute('data-theme', next)
+        localStorage.setItem('ani-web-theme', next)
+        btn.textContent = next === 'light' ? '🌙' : '☀️'
+      })
+    })()
   </script>
 </body>
 </html>

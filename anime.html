@@ -32,13 +32,15 @@
   <noscript><link rel="stylesheet" href="https://cdn.plyr.io/3.8.4/plyr.css"></noscript>
 
   <style>
-    /* Compact overrides — Pico's defaults are generous, tighten for this use case */
     :root {
       --pico-font-size: 16px;
-      /* Accent color used across all interactive elements */
       --ani-accent: #ff0000;
       --ani-accent-hover: #cc0000;
       --ani-accent-light: #fff0f0;
+    }
+
+    html[data-theme="dark"] {
+      --ani-accent-light: #2a0000;
     }
 
     body > main {
@@ -55,6 +57,34 @@
       margin-bottom: 0.25rem;
     }
 
+    /* ── Dark mode toggle ── */
+    #theme-toggle {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      width: 2.5rem;
+      height: 2.5rem;
+      border-radius: 50%;
+      background: var(--pico-form-element-background-color);
+      border: 1px solid var(--pico-form-element-border-color);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      line-height: 1;
+      padding: 0;
+      transition: background 0.2s, transform 0.2s;
+      z-index: 999;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    }
+
+    #theme-toggle:hover {
+      transform: scale(1.1);
+      background: var(--ani-accent-light);
+    }
+
+    /* ── Status & load bar ── */
     #status {
       min-height: 1.4rem;
       font-size: 0.9rem;
@@ -82,50 +112,156 @@
       accent-color: var(--ani-accent);
     }
 
+    /* ── Episode section ── */
     #episode-section {
       margin: 1rem 0;
     }
 
-    #episodes {
+    /* Jump-to bar */
+    #episode-filter {
       display: flex;
-      flex-wrap: wrap;
       gap: 0.5rem;
-      margin: 0.5rem 0;
+      margin-bottom: 1rem;
+      align-items: center;
+      flex-wrap: wrap;
     }
 
+    #episode-filter label {
+      font-size: 0.88rem;
+      font-weight: 500;
+      color: var(--pico-muted-color);
+    }
+
+    #ep-jump {
+      width: 80px;
+      padding: 0.35rem 0.6rem;
+      border: 1px solid var(--pico-form-element-border-color);
+      border-radius: 6px;
+      font-size: 0.9rem;
+      background: var(--pico-form-element-background-color);
+      color: var(--pico-color);
+      margin: 0;
+    }
+
+    #ep-jump:focus {
+      outline: none;
+      border-color: var(--ani-accent);
+      box-shadow: 0 0 0 3px var(--ani-accent-light);
+    }
+
+    #ep-jump-btn {
+      padding: 0.35rem 0.8rem;
+      font-size: 0.88rem;
+      font-weight: 600;
+      background: var(--ani-accent);
+      border-color: var(--ani-accent);
+      color: #fff;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+      margin: 0;
+      width: auto;
+    }
+
+    #ep-jump-btn:hover {
+      background: var(--ani-accent-hover);
+      border-color: var(--ani-accent-hover);
+    }
+
+    /* Episode group label */
+    .episode-group-label {
+      grid-column: 1 / -1;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--ani-accent);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-top: 0.75rem;
+      margin-bottom: 0.1rem;
+      padding-bottom: 0.25rem;
+      border-bottom: 1px solid var(--ani-accent-light);
+    }
+
+    .episode-group-label:first-child {
+      margin-top: 0;
+    }
+
+    /* Episode grid */
+    #episodes {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+      gap: 0.4rem;
+      margin: 0;
+    }
+
+    /* Episode buttons */
     .episode-btn {
-      padding: 0.4rem 0.8rem;
-      font-size: 0.85rem;
-      background: #fff;
-      color: #333;
-      border: 1px solid #ccc;
+      padding: 0.45rem 0.4rem;
+      font-size: 0.82rem;
+      font-weight: 500;
+      text-align: center;
+      background: var(--pico-form-element-background-color);
+      color: var(--pico-color, #333);
+      border: 1px solid var(--pico-form-element-border-color);
       border-radius: var(--pico-border-radius);
       cursor: pointer;
-      transition: border-color 0.15s, background 0.15s, color 0.15s;
+      transition: border-color 0.15s, background 0.15s, color 0.15s, transform 0.15s;
+      position: relative;
     }
 
     .episode-btn:hover {
       border-color: var(--ani-accent);
       color: var(--ani-accent);
       background: var(--ani-accent-light);
+      transform: scale(1.05);
     }
 
     .episode-btn.active {
       background: var(--ani-accent);
       border-color: var(--ani-accent);
       color: #fff;
-      font-weight: 600;
+      font-weight: 700;
+      box-shadow: 0 0 0 2px var(--ani-accent-light);
     }
 
+    /* Watched: subtle red tint + checkmark badge */
     .episode-btn.watched {
-      opacity: 0.55;
+      background: var(--ani-accent-light);
+      border-color: color-mix(in srgb, var(--ani-accent) 40%, transparent);
+      color: var(--ani-accent);
+      opacity: 0.75;
     }
 
+    .episode-btn.watched::after {
+      content: '✓';
+      position: absolute;
+      bottom: -4px;
+      right: -4px;
+      width: 14px;
+      height: 14px;
+      background: var(--ani-accent);
+      color: #fff;
+      border-radius: 50%;
+      font-size: 0.55rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 14px;
+      text-align: center;
+    }
+
+    /* Last-watched ring */
+    .episode-btn.last-watched {
+      outline: 2px solid var(--ani-accent);
+      outline-offset: 2px;
+    }
+
+    /* ── Player section ── */
     #player-section {
       margin: 1rem 0;
     }
 
-    /* Plyr container — ensures proper aspect ratio and sizing */
     .plyr__video-wrapper {
       background: #000;
     }
@@ -149,9 +285,9 @@
     .quality-btn {
       padding: 0.4rem 0.8rem;
       font-size: 0.85rem;
-      background: #fff;
-      color: #333;
-      border: 1px solid #ccc;
+      background: var(--pico-form-element-background-color);
+      color: var(--pico-color);
+      border: 1px solid var(--pico-form-element-border-color);
       border-radius: var(--pico-border-radius);
       cursor: pointer;
       transition: border-color 0.15s, background 0.15s, color 0.15s;
@@ -170,7 +306,7 @@
       font-weight: 600;
     }
 
-    /* Plyr — YouTube-style red accent */
+    /* Plyr red accent */
     .plyr {
       --plyr-color-main: var(--ani-accent);
     }
@@ -192,35 +328,48 @@
       z-index: 10;
     }
 
-    #seek-indicator.show { opacity: 1; }
+    #seek-indicator.show     { opacity: 1; }
     #seek-indicator.seek-left  { left: 12%; }
     #seek-indicator.seek-right { right: 12%; }
 
-    /* Keyboard shortcut help text */
+    /* ── Keyboard shortcut help ── */
     #keyboard-help {
       display: none;
       font-size: 0.85rem;
-      color: var(--pico-muted-color);
+      color: var(--pico-color);
       margin-top: 0.5rem;
-      padding: 0.5rem;
+      padding: 0.75rem 1rem;
       background: var(--pico-form-element-background-color);
       border-radius: var(--pico-border-radius);
-      border-left: 3px solid var(--pico-form-element-active-border-color);
+      border-left: 4px solid var(--ani-accent);
+      line-height: 1.75;
     }
 
     #keyboard-help.show {
       display: block;
     }
 
+    #keyboard-help strong {
+      color: var(--ani-accent);
+    }
+
     #keyboard-help code {
-      background: var(--pico-code-background-color);
-      padding: 0.1rem 0.3rem;
-      border-radius: 3px;
-      font-family: monospace;
+      display: inline-block;
+      background: var(--pico-code-background-color, #f4f4f4);
+      color: var(--ani-accent);
+      padding: 0.1rem 0.4rem;
+      border-radius: 4px;
+      border: 1px solid var(--pico-form-element-border-color);
+      border-bottom: 2px solid var(--ani-accent);
+      font-family: 'Courier New', monospace;
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin: 0 0.15rem;
     }
   </style>
 </head>
 <body>
+  <button id="theme-toggle" aria-label="Toggle dark mode">🌙</button>
   <main>
     <a href="/" class="back-link">← Back</a>
     <h1 id="anime-title">…</h1>
@@ -228,6 +377,11 @@
     <p id="status"></p>
 
     <section id="episode-section">
+      <div id="episode-filter">
+        <label for="ep-jump">Jump to:</label>
+        <input id="ep-jump" type="number" min="1" placeholder="Ep #">
+        <button id="ep-jump-btn" type="button">Go</button>
+      </div>
       <div id="episodes"></div>
     </section>
 
@@ -669,9 +823,12 @@
         }
         saveHistory()
 
-        // Update watched indicator on the active button
-        btn.textContent = `Ep ${epNo} ✓`
+        // Update watched state
+        btn.textContent = epNo
         btn.classList.add('watched')
+        // Move last-watched marker
+        document.querySelectorAll('.episode-btn.last-watched').forEach(b => b.classList.remove('last-watched'))
+        btn.classList.add('last-watched')
 
         clearStatus()
       } catch (error) {
@@ -701,26 +858,49 @@
           return
         }
 
-        const episodesList = document.getElementById('episodes')
-        episodesList.innerHTML = ''
-
-        const watched = state.history[state.animeId] || []
-
-        episodes.forEach(epNo => {
-          const btn = document.createElement('button')
-          btn.className = 'episode-btn'
-          const isWatched = watched.includes(epNo)
-          if (isWatched) btn.classList.add('watched')
-          btn.textContent = `Ep ${epNo}${isWatched ? ' ✓' : ''}`
-          btn.addEventListener('click', (e) => loadEpisode(e, epNo))
-          episodesList.appendChild(btn)
-        })
-
+        renderEpisodeList(episodes)
         clearStatus()
       } catch (error) {
         setStatus(`Error loading episodes: ${error.message}`, true)
       } finally {
         hideLoading()
+      }
+    }
+
+    function renderEpisodeList(episodes) {
+      const episodesList = document.getElementById('episodes')
+      episodesList.innerHTML = ''
+
+      const watched = state.history[state.animeId] || []
+      const lastWatched = watched.length > 0 ? watched[watched.length - 1] : null
+
+      const groupSize = 12
+      for (let i = 0; i < episodes.length; i += groupSize) {
+        const group = episodes.slice(i, i + groupSize)
+        const start = group[0]
+        const end = group[group.length - 1]
+
+        const label = document.createElement('div')
+        label.className = 'episode-group-label'
+        label.textContent = start === end ? `Episode ${start}` : `Episodes ${start}–${end}`
+        episodesList.appendChild(label)
+
+        group.forEach(epNo => {
+          const btn = document.createElement('button')
+          btn.className = 'episode-btn'
+          btn.setAttribute('data-ep', epNo)
+          btn.textContent = epNo
+
+          if (watched.includes(epNo)) {
+            btn.classList.add('watched')
+          }
+          if (epNo === lastWatched) {
+            btn.classList.add('last-watched')
+          }
+
+          btn.addEventListener('click', (e) => loadEpisode(e, epNo))
+          episodesList.appendChild(btn)
+        })
       }
     }
 
@@ -774,7 +954,38 @@
 
       loadHistory()
       loadEpisodes()
+
+      document.getElementById('ep-jump-btn').addEventListener('click', () => {
+        const val = parseInt(document.getElementById('ep-jump').value)
+        if (isNaN(val)) return
+        const btn = document.querySelector(`.episode-btn[data-ep="${val}"]`)
+        if (btn) {
+          btn.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          btn.focus()
+        } else {
+          setStatus(`Episode ${val} not found`, true)
+        }
+      })
+
+      document.getElementById('ep-jump').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') document.getElementById('ep-jump-btn').click()
+      })
     })
+
+    // Dark mode
+    ;(function initTheme() {
+      const saved = localStorage.getItem('ani-web-theme') || 'light'
+      document.documentElement.setAttribute('data-theme', saved)
+      const btn = document.getElementById('theme-toggle')
+      btn.textContent = saved === 'light' ? '🌙' : '☀️'
+      btn.addEventListener('click', () => {
+        const current = document.documentElement.getAttribute('data-theme')
+        const next = current === 'light' ? 'dark' : 'light'
+        document.documentElement.setAttribute('data-theme', next)
+        localStorage.setItem('ani-web-theme', next)
+        btn.textContent = next === 'light' ? '🌙' : '☀️'
+      })
+    })()
   </script>
 </body>
 </html>

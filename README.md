@@ -107,11 +107,24 @@ vercel
 
 | Key | Action |
 |-----|--------|
+| `Space` / `K` | Play / Pause |
 | `←` / `→` | Seek −5s / +5s |
 | `↑` / `↓` | Volume +10% / −10% |
 | `M` | Mute |
 | `F` | Fullscreen |
+| `C` | Toggle captions |
 | `L` | Toggle loop |
+| `0`–`9` | Seek to 0%–90% |
+| `?` | Show controls help |
+
+### Mouse (desktop)
+
+| Action | Result |
+|--------|--------|
+| Hover → center button | Play / Pause |
+| Double-click left half | Seek −10s |
+| Double-click right half | Seek +10s |
+| Long press | 2× speed (hold) |
 
 ### Touch (mobile)
 
@@ -119,6 +132,7 @@ vercel
 |---------|--------|
 | Double-tap left half | Seek −10s |
 | Double-tap right half | Seek +10s |
+| Long press | 2× speed (hold) |
 | Drag progress bar | Scrub to position |
 
 
