@@ -173,11 +173,28 @@
     /* Plyr — YouTube-style red accent */
     .plyr {
       --plyr-color-main: var(--ani-accent);
-      border: 1px solid #e0e0e0;
-      border-radius: var(--pico-border-radius, 0.25rem);
-      overflow: hidden;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
     }
+
+    /* Double-tap seek indicator */
+    #seek-indicator {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      padding: 0.4rem 0.8rem;
+      background: rgba(0, 0, 0, 0.55);
+      color: #fff;
+      border-radius: 1rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s;
+      z-index: 10;
+    }
+
+    #seek-indicator.show { opacity: 1; }
+    #seek-indicator.seek-left  { left: 12%; }
+    #seek-indicator.seek-right { right: 12%; }
 
     /* Keyboard shortcut help text */
     #keyboard-help {
@@ -224,14 +241,20 @@
       <!-- Keyboard shortcuts help (toggle with ? key) -->
       <div id="keyboard-help">
         <strong>Keyboard shortcuts:</strong><br>
-        <code>Space</code> Play/Pause • <code>←/→</code> Seek (5s) • <code>↑/↓</code> Volume •
-        <code>M</code> Mute • <code>F</code> Fullscreen • <code>?</code> Hide this
+        <code>Space</code> / <code>K</code> Play/Pause •
+        <code>←</code> / <code>→</code> Seek −5s / +5s •
+        <code>↑</code> / <code>↓</code> Volume +10% / −10% •
+        <code>M</code> Mute • <code>F</code> Fullscreen •
+        <code>C</code> Captions • <code>L</code> Loop •
+        <code>0–9</code> Seek to 0%–90% •
+        <code>?</code> Hide this<br>
+        <strong>Mobile:</strong> Double-tap left / right to seek −10s / +10s
       </div>
     </section>
   </main>
 
   <!-- hls.js -->
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.15/dist/hls.min.js"></script>
 
   <!-- Plyr -->
   <script src="https://cdn.plyr.io/3.8.4/plyr.js"></script>
@@ -291,6 +314,77 @@
     }
 
     // =========================================================================
+    // MOBILE GESTURE ENHANCEMENTS
+    // =========================================================================
+
+    /**
+     * Double-tap left/right half of the player to seek −10s / +10s.
+     * Shows a brief overlay indicator (YouTube-style).
+     */
+    function initDoubleTapSeek(plyr) {
+      const container = plyr.elements.container
+      if (!container) return
+
+      // Indicator overlay (created once, lives inside the container)
+      const indicator = document.createElement('div')
+      indicator.id = 'seek-indicator'
+      container.appendChild(indicator)
+
+      let lastTap = 0
+      let tapTimer = null
+
+      container.addEventListener('touchend', (e) => {
+        // Ignore taps on the control bar so normal UI interactions aren't disrupted
+        if (e.target.closest('.plyr__controls')) return
+
+        const now = Date.now()
+        const delta = now - lastTap
+
+        if (delta < 300 && delta > 0) {
+          clearTimeout(tapTimer)
+          const rect = container.getBoundingClientRect()
+          const isRight = e.changedTouches[0].clientX > rect.left + rect.width / 2
+          plyr.currentTime = Math.max(0, plyr.currentTime + (isRight ? 10 : -10))
+
+          indicator.textContent = isRight ? '▶▶ 10s' : '10s ◀◀'
+          indicator.className = isRight ? 'seek-right show' : 'seek-left show'
+          clearTimeout(indicator._timer)
+          indicator._timer = setTimeout(() => indicator.classList.remove('show'), 600)
+
+          lastTap = 0
+        } else {
+          lastTap = now
+        }
+      }, { passive: true })
+    }
+
+    /**
+     * Improve touch-drag scrubbing on the progress bar.
+     * Plyr's default touch handling can be imprecise; this translates
+     * finger X position directly to a seek time.
+     */
+    function initTouchScrub(plyr) {
+      // Wait a tick for Plyr to finish building the DOM
+      requestAnimationFrame(() => {
+        const progressEl = plyr.elements.progress
+        if (!progressEl) return
+
+        let scrubbing = false
+
+        progressEl.addEventListener('touchstart', () => { scrubbing = true },  { passive: true })
+        progressEl.addEventListener('touchend',   () => { scrubbing = false }, { passive: true })
+        progressEl.addEventListener('touchmove', (e) => {
+          if (!scrubbing || !plyr.duration) return
+          const rect = progressEl.getBoundingClientRect()
+          const ratio = Math.max(0, Math.min(1,
+            (e.touches[0].clientX - rect.left) / rect.width
+          ))
+          plyr.currentTime = ratio * plyr.duration
+        }, { passive: true })
+      })
+    }
+
+    // =========================================================================
     // PLAYER INITIALIZATION
     // =========================================================================
 
@@ -318,10 +412,13 @@
         ],
         settings: ['autoplay', 'speed', 'loop'],
         autoplay: false,
-        keyboard: { focused: true, global: true },
+        keyboard: { focused: true, global: false },
         invertTime: false,
         disableContextMenu: false
       })
+
+      initDoubleTapSeek(state.plyrInstance)
+      initTouchScrub(state.plyrInstance)
 
       return state.plyrInstance
     }
@@ -465,7 +562,13 @@
             debug: false,
             enableWorker: true,
             defaultAudioCodec: 'aac',
-            lowLatencyMode: false
+            lowLatencyMode: false,
+            // Mobile: let ABR pick start level, assume modest bandwidth initially
+            startLevel: -1,
+            abrEwmaDefaultEstimate: 500000,
+            // Smaller buffer saves memory on mobile (default: 30s / 600s)
+            maxBufferLength: 20,
+            maxMaxBufferLength: 60,
           })
 
           state.hlsInstance = hls
