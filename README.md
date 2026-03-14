@@ -27,6 +27,7 @@ This is an **exploratory/learning project** for educational purposes only.
 - [Features](#-features)
 - [Future Features](#-future-features)
 - [Quick Start](#-quick-start)
+- [Player Controls](#-player-controls)
 - [Tech Stack](#-tech-stack)
 - [FAQ](#-faq)
 - [Similar Projects](#-similar-projects)
@@ -41,7 +42,6 @@ This is an **exploratory/learning project** for educational purposes only.
 
 ## 🔮 Future Features
 
-- Improve mobile responsiveness and video player UX
 - Load/export watch history
 - Integrate watch history with AniList
 - Support multiple sources beyond AllAnime API
@@ -53,17 +53,45 @@ This is an **exploratory/learning project** for educational purposes only.
 ```bash
 git clone https://github.com/William9923/ani-web.git
 cd ani-web
+npm install
 ```
 
 ### Step 2: Run Locally
 
 ```bash
-node server.js
+npm start
 ```
 
 ### Step 3: Open Browser
 
 Navigate to [http://localhost:9001](http://localhost:9001)
+
+## 🛠️ Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `npm install` | Install dependencies |
+| `npm start` | Start local dev server at http://localhost:9001 |
+
+### Testing API endpoints
+
+```bash
+# Search anime
+curl "http://localhost:9001/api/search?q=naruto&mode=sub"
+
+# Get episode list
+curl "http://localhost:9001/api/episodes?id=<anime-id>&mode=sub"
+
+# Resolve stream sources for an episode
+curl "http://localhost:9001/api/resolve?id=<anime-id>&ep=1&mode=sub"
+```
+
+### Deploy to Vercel
+
+```bash
+npm install -g vercel
+vercel
+```
 
 ## 🔧 API Reference / Serverless function
 
@@ -73,13 +101,33 @@ Navigate to [http://localhost:9001](http://localhost:9001)
 | `/api/episodes?id=<anime-id>&mode=<sub/dub>` | Get episode list |
 | `/api/resolve?id=<anime-id>&ep=<episode>&mode=<sub/dub>` | Get stream sources |
 
+## 🎮 Player Controls
+
+### Keyboard (desktop)
+
+| Key | Action |
+|-----|--------|
+| `←` / `→` | Seek −5s / +5s |
+| `↑` / `↓` | Volume +10% / −10% |
+| `M` | Mute |
+| `F` | Fullscreen |
+| `L` | Toggle loop |
+
+### Touch (mobile)
+
+| Gesture | Action |
+|---------|--------|
+| Double-tap left half | Seek −10s |
+| Double-tap right half | Seek +10s |
+| Drag progress bar | Scrub to position |
+
 
 ## 📚 Tech Stack
 
 [![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=flat&logo=javascript&logoColor=black)](https://www.javascript.com/)
 [![Node.js](https://img.shields.io/badge/Node.js-339933?style=flat&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Pico CSS](https://img.shields.io/badge/Pico%20CSS-2.0.11-blue)](https://picocss.com/)
-[![Hls.js](https://img.shields.io/badge/Hls.js-1.5.7-red)](https://hls-js.com/)
+[![Hls.js](https://img.shields.io/badge/Hls.js-1.6.15-red)](https://hls-js.com/)
 [![Plyr](https://img.shields.io/badge/Plyr-3.8.4-orange)](https://plyr.io/)
 
 - **JavaScript** - Vanilla JS (no frameworks)
