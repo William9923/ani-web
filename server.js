@@ -374,7 +374,16 @@ async function requestHandler(req, res) {
     return serveStatic(res, path.join(__dirname, 'anime.html'))
   }
 
+  if (pathname === '/anilist.js') {
+    return serveStatic(res, path.join(__dirname, 'anilist.js'))
+  }
+
   // API routes
+  if (pathname === '/api/config') {
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    return res.end(JSON.stringify({ ANILIST_CLIENT_ID: process.env.ANILIST_CLIENT_ID || '' }))
+  }
+
   if (pathname === '/api/search') {
     const q = query.get('q') || ''
     const mode = query.get('mode') || 'sub'

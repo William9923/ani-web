@@ -23,6 +23,7 @@
     link.href = canvas.toDataURL()
     document.head.appendChild(link)
   </script>
+  <script src="/anilist.js"></script>
   <style>
     :root {
       --pico-font-size: 16px;
@@ -119,6 +120,30 @@
       padding: 0;
       transition: background 0.2s, transform 0.2s;
       box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+      position: relative;
+    }
+
+    #fab-menu #fab-items button::after {
+      content: attr(aria-label);
+      position: absolute;
+      right: calc(100% + 10px);
+      top: 50%;
+      transform: translateY(-50%) scale(0.9);
+      opacity: 0;
+      pointer-events: none;
+      background: var(--pico-color);
+      color: var(--pico-background-color);
+      padding: 0.25rem 0.6rem;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      white-space: nowrap;
+      transition: opacity 0.2s, transform 0.2s;
+    }
+
+    #fab-menu #fab-items button:hover::after {
+      opacity: 1;
+      transform: translateY(-50%) scale(1);
     }
 
     #fab-menu #fab-items button:hover {
@@ -274,8 +299,8 @@
     <button id="fab-toggle" aria-label="Menu" aria-expanded="false">☰</button>
     <div id="fab-items">
       <button id="theme-toggle" aria-label="Toggle dark mode">🌙</button>
-      <button id="export-btn" aria-label="Export watch history" title="Export watch history">↓</button>
-      <button id="import-btn" aria-label="Import watch history" title="Import watch history">↑</button>
+      <button id="export-btn" aria-label="Export watch history">↓</button>
+      <button id="import-btn" aria-label="Import watch history">↑</button>
       <input id="history-file-input" type="file" accept=".json" style="display:none">
     </div>
   </div>
@@ -309,7 +334,27 @@
       try {
         const stored = localStorage.getItem('ani-web-history')
         if (stored) {
-          state.history = JSON.parse(stored)
+          const raw = JSON.parse(stored)
+          let migrated = false
+          for (const key in raw) {
+            if (raw[key]) {
+              // Handle old array format: { eps: [1,2,3] } -> { eps: { "1": 0, "2": 0, "3": 0 } }
+              if (Array.isArray(raw[key].eps)) {
+                const oldEps = raw[key].eps
+                raw[key].eps = {}
+                for (const ep of oldEps) {
+                  raw[key].eps[String(ep)] = raw[key].last_watched_at || 0
+                }
+                migrated = true
+              }
+              // Ensure timestamp fields exist
+              if (raw[key].last_watched_at == null) raw[key].last_watched_at = 0
+              if (raw[key].anilist_updated_at == null) raw[key].anilist_updated_at = 0
+              if (raw[key].anilist_progress == null) raw[key].anilist_progress = 0
+            }
+          }
+          state.history = raw
+          if (migrated) saveHistory()
         }
       } catch (e) {
         state.history = {}
@@ -343,12 +388,65 @@
             setStatus('Invalid history file.', true)
             return
           }
-          for (const [id, eps] of Object.entries(imported)) {
-            if (!Array.isArray(eps)) continue
-            if (!state.history[id]) state.history[id] = []
-            const set = new Set(state.history[id])
-            eps.forEach(ep => set.add(ep))
-            state.history[id] = [...set].sort((a, b) => a - b)
+          for (const [id, data] of Object.entries(imported)) {
+            // Handle both old array format and new object format
+            let eps = null
+            if (Array.isArray(data)) {
+              eps = data
+            } else if (data && data.eps) {
+              if (Array.isArray(data.eps)) {
+                eps = data.eps
+              } else if (typeof data.eps === 'object') {
+                // New format: eps is { "1": timestamp, "2": timestamp }
+                eps = Object.keys(data.eps).map(Number)
+              }
+            }
+            let title = !Array.isArray(data) && data && data.title ? data.title : null
+            if (!eps || eps.length === 0) continue
+            
+            const now = Date.now()
+            if (!state.history[id]) {
+              // Convert array to object format with timestamps
+              const epsObj = {}
+              for (const ep of eps) {
+                epsObj[String(ep)] = now
+              }
+              state.history[id] = { title, eps: epsObj, last_watched_at: now, anilist_updated_at: 0, anilist_progress: 0 }
+            } else {
+              if (title && !state.history[id].title) state.history[id].title = title
+              // Ensure fields exist
+              if (!state.history[id].eps || Array.isArray(state.history[id].eps)) {
+                if (Array.isArray(state.history[id].eps)) {
+                  // Convert old array to object
+                  const epsObj = {}
+                  for (const ep of state.history[id].eps) {
+                    epsObj[String(ep)] = state.history[id].last_watched_at || now
+                  }
+                  state.history[id].eps = epsObj
+                } else {
+                  state.history[id].eps = {}
+                }
+              }
+              if (state.history[id].last_watched_at == null) state.history[id].last_watched_at = 0
+              if (state.history[id].anilist_updated_at == null) state.history[id].anilist_updated_at = 0
+              if (state.history[id].anilist_progress == null) state.history[id].anilist_progress = 0
+
+              // Add imported episodes with current timestamp
+              for (const ep of eps) {
+                const epStr = String(ep)
+                if (!state.history[id].eps[epStr]) {
+                  state.history[id].eps[epStr] = now
+                }
+              }
+            }
+
+            // Update last_watched_at to most recent
+            const epsObj = state.history[id].eps
+            let maxTs = state.history[id].last_watched_at || 0
+            for (const ts of Object.values(epsObj)) {
+              if (ts > maxTs) maxTs = ts
+            }
+            state.history[id].last_watched_at = maxTs
           }
           saveHistory()
           setStatus('History imported.')
@@ -365,6 +463,64 @@
       el.textContent = message
       el.className = ''
       if (isError) el.classList.add('error')
+    }
+
+    // Format timestamp to relative time (e.g., "2h ago", "Yesterday")
+    function formatRelativeTime(timestamp) {
+      if (!timestamp || timestamp === 0) return null
+
+      const now = Date.now()
+      const diff = now - timestamp
+      const seconds = Math.floor(diff / 1000)
+      const minutes = Math.floor(seconds / 60)
+      const hours = Math.floor(minutes / 60)
+      const days = Math.floor(hours / 24)
+
+      if (seconds < 60) return 'just now'
+      if (minutes < 60) return `${minutes}m ago`
+      if (hours < 24) return `${hours}h ago`
+      if (days === 1) return 'yesterday'
+      if (days < 7) return `${days}d ago`
+      if (days < 30) return `${Math.floor(days / 7)}w ago`
+      if (days < 365) return `${Math.floor(days / 30)}mo ago`
+      return `${Math.floor(days / 365)}y ago`
+    }
+
+    // Get the most recent timestamp from local or AniList
+    function getLastWatchedTimestamp(historyData) {
+      const localTs = historyData.last_watched_at || 0
+      const anilistTs = historyData.anilist_updated_at || 0
+      return Math.max(localTs, anilistTs)
+    }
+
+    // Get the episode that was watched most recently (by timestamp)
+    function getLastWatchedEpisode(historyData) {
+      const epsObj = historyData.eps
+      if (!epsObj || typeof epsObj !== 'object') return null
+      
+      let lastEp = null
+      let lastTs = 0
+      for (const [ep, ts] of Object.entries(epsObj)) {
+        if (ts > lastTs) {
+          lastTs = ts
+          lastEp = Number(ep)
+        }
+      }
+      return lastEp
+    }
+
+    // Get the highest episode number from local or AniList progress
+    function getHighestEpisode(historyData) {
+      // Handle both old array format and new object format
+      let localMax = 0
+      if (Array.isArray(historyData.eps)) {
+        localMax = historyData.eps.length > 0 ? Math.max(...historyData.eps) : 0
+      } else if (historyData.eps && typeof historyData.eps === 'object') {
+        const eps = Object.keys(historyData.eps).map(Number)
+        localMax = eps.length > 0 ? Math.max(...eps) : 0
+      }
+      const anilistProgress = historyData.anilist_progress || 0
+      return Math.max(localMax, anilistProgress)
     }
 
     // Clear status
@@ -394,7 +550,25 @@
 
         const metaEl = document.createElement('span')
         metaEl.className = 'result-meta'
-        metaEl.textContent = `${item.episodes ?? '?'} ep`
+        let metaText = `${item.episodes ?? '?'} ep`
+
+        const historyData = state.history[item.id]
+        if (historyData) {
+          const lastTs = getLastWatchedTimestamp(historyData)
+          if (lastTs > 0) {
+            const relativeTime = formatRelativeTime(lastTs)
+            const lastEp = getLastWatchedEpisode(historyData)
+            if (relativeTime && lastEp) {
+              metaText = `${relativeTime} • Ep ${lastEp}`
+            }
+          } else {
+            const highestEp = getHighestEpisode(historyData)
+            if (highestEp > 0) {
+              metaText = `Last Watched: Ep ${highestEp} • ${metaText}`
+            }
+          }
+        }
+        metaEl.textContent = metaText
 
         const chevronEl = document.createElement('span')
         chevronEl.className = 'result-chevron'
@@ -469,6 +643,14 @@
     })
     document.getElementById('search-form').addEventListener('submit', handleSearch)
 
+    // Listen for history updates from other pages (e.g., AniList sync)
+    window.addEventListener('history-updated', () => {
+      loadHistory()
+      // Re-trigger search to update display if results are shown
+      const query = document.getElementById('search-input').value.trim()
+      if (query) handleSearch({ preventDefault: () => {} })
+    })
+
     // FAB menu toggle
     document.getElementById('fab-toggle').addEventListener('click', () => {
       const menu = document.getElementById('fab-menu')
@@ -510,6 +692,9 @@
         btn.textContent = next === 'light' ? '🌙' : '☀️'
       })
     })()
+
+    // Initialize AniList
+    initAnilist()
   </script>
 </body>
 </html>
