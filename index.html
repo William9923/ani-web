@@ -6,6 +6,8 @@
   <title>(ﾉ◕ヮ◕)ﾉ ani-web</title>
   <meta name="description" content="Search and watch anime in your browser — lightweight, no sign-up required.">
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
   <link rel="preload" as="style" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.classless.min.css" onload="this.onload=null;this.rel='stylesheet'">
   <noscript><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.classless.min.css"></noscript>
   <script>
@@ -36,7 +38,14 @@
       --ani-accent-light: #2a0000;
     }
 
+    body {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
     body > main {
+      flex: 1;
       max-width: 860px;
       padding-inline: 1rem;
     }
@@ -322,6 +331,7 @@
 
     <div id="results"></div>
   </main>
+  <footer style="text-align:center;font-size:0.8rem;color:var(--pico-muted-color);padding:1rem;"><i class="fa fa-github" aria-hidden="true"></i> <a href="https://github.com/William9923/ani-web" target="_blank" rel="noopener noreferrer">GitHub</a> · <i class="fa fa-signal" aria-hidden="true"></i> <a href="https://allanime.day" target="_blank" rel="noopener noreferrer">AllAnime</a></footer>
 
   <script>
     const state = {
@@ -373,7 +383,8 @@
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = 'ani-web-history.json'
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -1)
+      a.download = `ani-web-history-${ts}.json`
       a.click()
       URL.revokeObjectURL(url)
     }
