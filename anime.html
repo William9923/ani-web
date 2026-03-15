@@ -528,11 +528,21 @@
     // UI UTILITIES
     // =========================================================================
 
+    // Load history from localStorage
     function loadHistory() {
       try {
         const stored = localStorage.getItem('ani-web-history')
         if (stored) {
-          state.history = JSON.parse(stored)
+          const raw = JSON.parse(stored)
+          let migrated = false
+          for (const key in raw) {
+            if (Array.isArray(raw[key])) {
+              raw[key] = { title: null, eps: raw[key] }
+              migrated = true
+            }
+          }
+          state.history = raw
+          if (migrated) saveHistory()
         }
       } catch (e) {
         state.history = {}
@@ -565,12 +575,17 @@
             setStatus('Invalid history file.', true)
             return
           }
-          for (const [id, eps] of Object.entries(imported)) {
-            if (!Array.isArray(eps)) continue
-            if (!state.history[id]) state.history[id] = []
-            const set = new Set(state.history[id])
+          for (const [id, data] of Object.entries(imported)) {
+            let eps = Array.isArray(data) ? data : (data && Array.isArray(data.eps) ? data.eps : null)
+            let title = !Array.isArray(data) && data && data.title ? data.title : null
+            if (!eps) continue
+            
+            if (!state.history[id]) state.history[id] = { title, eps: [] }
+            else if (title && !state.history[id].title) state.history[id].title = title
+
+            const set = new Set(state.history[id].eps)
             eps.forEach(ep => set.add(ep))
-            state.history[id] = [...set].sort((a, b) => a - b)
+            state.history[id].eps = [...set].sort((a, b) => a - b)
           }
           saveHistory()
           setStatus('History imported.')
@@ -769,6 +784,11 @@
             const title = document.getElementById('anime-title').textContent
             if (statusEl) {
               statusEl.innerHTML = `AniList: <a href="https://anilist.co/anime/${state.anilistMediaId}" target="_blank" style="color: inherit; text-decoration: underline;">${title}</a> • Watched Ep <b>${result.progress}</b>`
+            }
+            // Mark as synced locally
+            if (state.history[state.animeId]) {
+              state.history[state.animeId].anilist_synced_ep = epNo
+              saveHistory()
             }
           }
         }
@@ -983,10 +1003,13 @@
 
         // Save to history
         if (!state.history[state.animeId]) {
-          state.history[state.animeId] = []
+          state.history[state.animeId] = { title: state.animeTitle, eps: [] }
+        } else if (!state.history[state.animeId].title && state.animeTitle) {
+          state.history[state.animeId].title = state.animeTitle
         }
-        if (!state.history[state.animeId].includes(epNo)) {
-          state.history[state.animeId].push(epNo)
+        
+        if (!state.history[state.animeId].eps.includes(epNo)) {
+          state.history[state.animeId].eps.push(epNo)
         }
         saveHistory()
 
@@ -1038,7 +1061,7 @@
       const episodesList = document.getElementById('episodes')
       episodesList.innerHTML = ''
 
-      const watched = state.history[state.animeId] || []
+      const watched = state.history[state.animeId]?.eps || []
       const lastWatched = watched.length > 0 ? watched[watched.length - 1] : null
 
       const groupSize = 12

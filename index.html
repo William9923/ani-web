@@ -334,7 +334,16 @@
       try {
         const stored = localStorage.getItem('ani-web-history')
         if (stored) {
-          state.history = JSON.parse(stored)
+          const raw = JSON.parse(stored)
+          let migrated = false
+          for (const key in raw) {
+            if (Array.isArray(raw[key])) {
+              raw[key] = { title: null, eps: raw[key] }
+              migrated = true
+            }
+          }
+          state.history = raw
+          if (migrated) saveHistory()
         }
       } catch (e) {
         state.history = {}
@@ -368,12 +377,17 @@
             setStatus('Invalid history file.', true)
             return
           }
-          for (const [id, eps] of Object.entries(imported)) {
-            if (!Array.isArray(eps)) continue
-            if (!state.history[id]) state.history[id] = []
-            const set = new Set(state.history[id])
+          for (const [id, data] of Object.entries(imported)) {
+            let eps = Array.isArray(data) ? data : (data && Array.isArray(data.eps) ? data.eps : null)
+            let title = !Array.isArray(data) && data && data.title ? data.title : null
+            if (!eps) continue
+            
+            if (!state.history[id]) state.history[id] = { title, eps: [] }
+            else if (title && !state.history[id].title) state.history[id].title = title
+
+            const set = new Set(state.history[id].eps)
             eps.forEach(ep => set.add(ep))
-            state.history[id] = [...set].sort((a, b) => a - b)
+            state.history[id].eps = [...set].sort((a, b) => a - b)
           }
           saveHistory()
           setStatus('History imported.')
@@ -419,7 +433,14 @@
 
         const metaEl = document.createElement('span')
         metaEl.className = 'result-meta'
-        metaEl.textContent = `${item.episodes ?? '?'} ep`
+        let metaText = `${item.episodes ?? '?'} ep`
+        
+        const historyData = state.history[item.id]
+        if (historyData && Array.isArray(historyData.eps) && historyData.eps.length > 0) {
+          const highestEp = Math.max(...historyData.eps)
+          metaText = `Last Watched: Ep ${highestEp} • ${metaText}`
+        }
+        metaEl.textContent = metaText
 
         const chevronEl = document.createElement('span')
         chevronEl.className = 'result-chevron'
