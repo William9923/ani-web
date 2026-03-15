@@ -23,6 +23,7 @@
     link.href = canvas.toDataURL()
     document.head.appendChild(link)
   </script>
+  <script src="/anilist.js"></script>
   <style>
     :root {
       --pico-font-size: 16px;
@@ -119,6 +120,30 @@
       padding: 0;
       transition: background 0.2s, transform 0.2s;
       box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+      position: relative;
+    }
+
+    #fab-menu #fab-items button::after {
+      content: attr(aria-label);
+      position: absolute;
+      right: calc(100% + 10px);
+      top: 50%;
+      transform: translateY(-50%) scale(0.9);
+      opacity: 0;
+      pointer-events: none;
+      background: var(--pico-color);
+      color: var(--pico-background-color);
+      padding: 0.25rem 0.6rem;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      white-space: nowrap;
+      transition: opacity 0.2s, transform 0.2s;
+    }
+
+    #fab-menu #fab-items button:hover::after {
+      opacity: 1;
+      transform: translateY(-50%) scale(1);
     }
 
     #fab-menu #fab-items button:hover {
@@ -274,8 +299,8 @@
     <button id="fab-toggle" aria-label="Menu" aria-expanded="false">☰</button>
     <div id="fab-items">
       <button id="theme-toggle" aria-label="Toggle dark mode">🌙</button>
-      <button id="export-btn" aria-label="Export watch history" title="Export watch history">↓</button>
-      <button id="import-btn" aria-label="Import watch history" title="Import watch history">↑</button>
+      <button id="export-btn" aria-label="Export watch history">↓</button>
+      <button id="import-btn" aria-label="Import watch history">↑</button>
       <input id="history-file-input" type="file" accept=".json" style="display:none">
     </div>
   </div>
@@ -510,6 +535,9 @@
         btn.textContent = next === 'light' ? '🌙' : '☀️'
       })
     })()
+
+    // Initialize AniList
+    initAnilist()
   </script>
 </body>
 </html>

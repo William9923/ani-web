@@ -26,6 +26,7 @@
     link.href = canvas.toDataURL()
     document.head.appendChild(link)
   </script>
+  <script src="/anilist.js"></script>
 
   <!-- Plyr CSS -->
   <link rel="preload" as="style" href="https://cdn.plyr.io/3.8.4/plyr.css" onload="this.onload=null;this.rel='stylesheet'">
@@ -134,6 +135,30 @@
       padding: 0;
       transition: background 0.2s, transform 0.2s;
       box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+      position: relative;
+    }
+
+    #fab-menu #fab-items button::after {
+      content: attr(aria-label);
+      position: absolute;
+      right: calc(100% + 10px);
+      top: 50%;
+      transform: translateY(-50%) scale(0.9);
+      opacity: 0;
+      pointer-events: none;
+      background: var(--pico-color);
+      color: var(--pico-background-color);
+      padding: 0.25rem 0.6rem;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      white-space: nowrap;
+      transition: opacity 0.2s, transform 0.2s;
+    }
+
+    #fab-menu #fab-items button:hover::after {
+      opacity: 1;
+      transform: translateY(-50%) scale(1);
     }
 
     #fab-menu #fab-items button:hover {
@@ -434,14 +459,15 @@
     <button id="fab-toggle" aria-label="Menu" aria-expanded="false">☰</button>
     <div id="fab-items">
       <button id="theme-toggle" aria-label="Toggle dark mode">🌙</button>
-      <button id="export-btn" aria-label="Export watch history" title="Export watch history">↓</button>
-      <button id="import-btn" aria-label="Import watch history" title="Import watch history">↑</button>
+      <button id="export-btn" aria-label="Export watch history">↓</button>
+      <button id="import-btn" aria-label="Import watch history">↑</button>
       <input id="history-file-input" type="file" accept=".json" style="display:none">
     </div>
   </div>
   <main>
     <a href="/" class="back-link">← Back</a>
     <h1 id="anime-title">…</h1>
+    <div id="anilist-status" style="font-size: 0.9rem; color: var(--pico-muted-color); margin-bottom: 1rem; display: none;"></div>
     <progress id="load-bar"></progress>
     <p id="status"></p>
 
@@ -721,6 +747,33 @@
       video.addEventListener('waiting', showLoading)
       video.addEventListener('playing', hideLoading)
       video.addEventListener('canplay', hideLoading)
+
+      // Automatic AniList tracking
+      video.addEventListener('timeupdate', async () => {
+        if (!window.anilistState || !window.anilistState.token || !state.anilistMediaId) return
+        
+        const epNo = parseInt(state.currentEp)
+        if (isNaN(epNo)) return
+
+        // Skip if we already tracked this episode or if it's less than current progress
+        if (state.anilistTrackedEp === epNo) return
+        if (state.anilistProgress && epNo <= state.anilistProgress) return
+        
+        // Track at 80% completion
+        if (video.duration > 0 && (video.currentTime / video.duration) >= 0.8) {
+          state.anilistTrackedEp = epNo
+          const result = await window.updateAnilistProgress(state.anilistMediaId, epNo)
+          if (result) {
+            state.anilistProgress = result.progress
+            const statusEl = document.getElementById('anilist-status')
+            const title = document.getElementById('anime-title').textContent
+            if (statusEl) {
+              statusEl.innerHTML = `AniList: <a href="https://anilist.co/anime/${state.anilistMediaId}" target="_blank" style="color: inherit; text-decoration: underline;">${title}</a> • Watched Ep <b>${result.progress}</b>`
+            }
+          }
+        }
+      })
+
       state.videoListenersAttached = true
     }
 
@@ -1126,6 +1179,28 @@
         localStorage.setItem('ani-web-theme', next)
         btn.textContent = next === 'light' ? '🌙' : '☀️'
       })
+    })()
+
+    // Initialize AniList and map title
+    ;(async function setupAnilist() {
+      await initAnilist()
+      if (anilistState.token && state.animeTitle) {
+        const statusEl = document.getElementById('anilist-status')
+        statusEl.style.display = 'block'
+        statusEl.textContent = 'AniList: Searching...'
+
+        const media = await searchAnilistAnime(state.animeTitle)
+        if (media) {
+          state.anilistMediaId = media.id
+          const progress = media.mediaListEntry ? media.mediaListEntry.progress : 0
+          state.anilistProgress = progress
+          
+          const title = media.title.romaji || media.title.english || 'Anime'
+          statusEl.innerHTML = `AniList: <a href="https://anilist.co/anime/${media.id}" target="_blank" style="color: inherit; text-decoration: underline;">${title}</a> • Watched Ep <b>${progress}</b>`
+        } else {
+          statusEl.textContent = 'AniList: Title not found'
+        }
+      }
     })()
   </script>
 </body>
