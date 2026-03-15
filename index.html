@@ -44,31 +44,90 @@
       margin-bottom: 0.25rem;
     }
 
-    /* ── Dark mode toggle ── */
-    #theme-toggle {
+    /* ── FAB Menu ── */
+    #fab-menu {
       position: fixed;
       top: 1rem;
       right: 1rem;
+      z-index: 999;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.5rem;
+    }
+
+    #fab-menu #fab-toggle {
+      --pico-color: var(--pico-form-element-color);
+      --pico-background-color: var(--pico-form-element-background-color);
+      --pico-border-color: var(--pico-form-element-border-color);
       width: 2.5rem;
       height: 2.5rem;
       border-radius: 50%;
-      background: var(--pico-form-element-background-color);
-      border: 1px solid var(--pico-form-element-border-color);
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.2rem;
+      font-size: 1.4rem;
       line-height: 1;
       padding: 0;
       transition: background 0.2s, transform 0.2s;
-      z-index: 999;
       box-shadow: 0 2px 8px rgba(0,0,0,0.12);
     }
 
-    #theme-toggle:hover {
+    #fab-menu #fab-toggle:hover {
       transform: scale(1.1);
       background: var(--ani-accent-light);
+    }
+
+    #fab-items {
+      display: none;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    #fab-menu.open #fab-items {
+      display: flex;
+      animation: fab-reveal 0.15s ease;
+    }
+
+    @keyframes fab-reveal {
+      from {
+        opacity: 0;
+        transform: translateY(-6px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* ── FAB Buttons ── */
+    #fab-menu #fab-items button {
+      --pico-color: var(--pico-form-element-color);
+      --pico-background-color: var(--pico-form-element-background-color);
+      --pico-border-color: var(--pico-form-element-border-color);
+      width: 2.5rem;
+      height: 2.5rem;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      font-weight: 700;
+      line-height: 1;
+      padding: 0;
+      transition: background 0.2s, transform 0.2s;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    }
+
+    #fab-menu #fab-items button:hover {
+      transform: scale(1.1);
+      background: var(--ani-accent-light);
+    }
+
+    #theme-toggle {
+      font-size: 1.2rem;
     }
 
     /* ── Search form ── */
@@ -96,7 +155,7 @@
       margin-bottom: 0;
     }
 
-    #search-form button {
+    #search-btn {
       width: auto;
       margin-bottom: 0;
       font-weight: 600;
@@ -106,14 +165,14 @@
       transition: background 0.2s, transform 0.15s, box-shadow 0.15s;
     }
 
-    #search-form button:hover:not([disabled]) {
+    #search-btn:hover:not([disabled]) {
       background: var(--ani-accent-hover);
       border-color: var(--ani-accent-hover);
       transform: translateY(-1px);
       box-shadow: 0 4px 10px rgba(255,0,0,0.25);
     }
 
-    #search-form button[aria-busy="true"] {
+    #search-btn[aria-busy="true"] {
       opacity: 0.75;
     }
 
@@ -211,7 +270,15 @@
   </style>
 </head>
 <body>
-  <button id="theme-toggle" aria-label="Toggle dark mode">🌙</button>
+  <div id="fab-menu">
+    <button id="fab-toggle" aria-label="Menu" aria-expanded="false">☰</button>
+    <div id="fab-items">
+      <button id="theme-toggle" aria-label="Toggle dark mode">🌙</button>
+      <button id="export-btn" aria-label="Export watch history" title="Export watch history">↓</button>
+      <button id="import-btn" aria-label="Import watch history" title="Import watch history">↑</button>
+      <input id="history-file-input" type="file" accept=".json" style="display:none">
+    </div>
+  </div>
 
   <main>
     <h1>(ﾉ◕ヮ◕)ﾉ ani-web</h1>
@@ -252,6 +319,44 @@
     // Save history to localStorage
     function saveHistory() {
       localStorage.setItem('ani-web-history', JSON.stringify(state.history))
+    }
+
+    // Export history as a JSON file download
+    function exportHistory() {
+      const json = JSON.stringify(state.history, null, 2)
+      const blob = new Blob([json], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'ani-web-history.json'
+      a.click()
+      URL.revokeObjectURL(url)
+    }
+
+    // Import history from a JSON file, merging with existing data
+    function importHistory(file) {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        try {
+          const imported = JSON.parse(e.target.result)
+          if (typeof imported !== 'object' || imported === null || Array.isArray(imported)) {
+            setStatus('Invalid history file.', true)
+            return
+          }
+          for (const [id, eps] of Object.entries(imported)) {
+            if (!Array.isArray(eps)) continue
+            if (!state.history[id]) state.history[id] = []
+            const set = new Set(state.history[id])
+            eps.forEach(ep => set.add(ep))
+            state.history[id] = [...set].sort((a, b) => a - b)
+          }
+          saveHistory()
+          setStatus('History imported.')
+        } catch {
+          setStatus('Failed to parse history file.', true)
+        }
+      }
+      reader.readAsText(file)
     }
 
     // Set status message
@@ -363,6 +468,33 @@
       state.mode = e.target.value
     })
     document.getElementById('search-form').addEventListener('submit', handleSearch)
+
+    // FAB menu toggle
+    document.getElementById('fab-toggle').addEventListener('click', () => {
+      const menu = document.getElementById('fab-menu')
+      const open = menu.classList.toggle('open')
+      document.getElementById('fab-toggle').setAttribute('aria-expanded', open)
+      document.getElementById('fab-toggle').textContent = open ? '✕' : '☰'
+    })
+    document.addEventListener('click', (e) => {
+      const menu = document.getElementById('fab-menu')
+      if (!menu.contains(e.target)) {
+        menu.classList.remove('open')
+        document.getElementById('fab-toggle').setAttribute('aria-expanded', 'false')
+        document.getElementById('fab-toggle').textContent = '☰'
+      }
+    })
+
+    // History import / export
+    document.getElementById('export-btn').addEventListener('click', exportHistory)
+    document.getElementById('import-btn').addEventListener('click', () => {
+      document.getElementById('history-file-input').click()
+    })
+    document.getElementById('history-file-input').addEventListener('change', (e) => {
+      const file = e.target.files[0]
+      if (file) importHistory(file)
+      e.target.value = ''
+    })
 
     // Dark mode
     ;(function initTheme() {
