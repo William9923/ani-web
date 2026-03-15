@@ -41,6 +41,8 @@ async function initAnilist() {
   if (anilistState.token) {
     // Run sync asynchronously in the background
     syncLocalToAnilist()
+    // Also sync AniList progress back to localStorage
+    syncAnilistToLocal()
   }
 }
 
@@ -168,7 +170,7 @@ async function updateAnilistProgress(mediaId, episodeNumber) {
   return data ? data.SaveMediaListEntry : null
 }
 
-// 7. Background Auto-Sync
+// 7. Background Auto-Sync (local -> AniList)
 async function syncLocalToAnilist() {
   const stored = localStorage.getItem('ani-web-history')
   if (!stored || !anilistState.token) return
@@ -180,9 +182,19 @@ async function syncLocalToAnilist() {
 
   const toSync = []
   for (const [id, data] of Object.entries(history)) {
-    if (!data.title || !data.eps || data.eps.length === 0) continue
+    if (!data.title || !data.eps) continue
     
-    const highestEp = Math.max(...data.eps)
+    // Handle both old array format and new object format
+    let eps = []
+    if (Array.isArray(data.eps)) {
+      eps = data.eps
+    } else if (data.eps && typeof data.eps === 'object') {
+      eps = Object.keys(data.eps).map(Number)
+    }
+    
+    if (eps.length === 0) continue
+    
+    const highestEp = Math.max(...eps)
     if (data.anilist_synced_ep === highestEp) continue
 
     toSync.push({ id, title: data.title, highestEp, data })
@@ -224,7 +236,116 @@ async function syncLocalToAnilist() {
   }
 }
 
+// 8. Sync AniList -> LocalStorage (fetch user's list and merge into localStorage)
+async function syncAnilistToLocal() {
+  if (!anilistState.token) return
+
+  const query = `
+    query {
+      MediaListCollection(type: ANIME, forceSingleChunk: true) {
+        lists {
+          entries {
+            mediaId
+            progress
+            updatedAt
+            media {
+              id
+              title {
+                romaji
+                english
+              }
+            }
+          }
+        }
+      }
+    }
+  `
+
+  const data = await anilistRequest(query)
+  if (!data || !data.MediaListCollection) return
+
+  const entries = data.MediaListCollection.lists.flatMap(list => list.entries)
+  if (entries.length === 0) return
+
+  // Load current local history
+  let history = {}
+  try {
+    const stored = localStorage.getItem('ani-web-history')
+    if (stored) history = JSON.parse(stored)
+  } catch (e) { return }
+
+  let hasChanges = false
+
+  for (const entry of entries) {
+    if (!entry.mediaId || entry.progress == null) continue
+
+    const mediaId = String(entry.mediaId)
+    const progress = entry.progress
+    const updatedAt = entry.updatedAt || 0
+
+    // Get title from AniList
+    const anilistTitle = entry.media?.title?.romaji || entry.media?.title?.english || null
+
+    // Initialize entry if needed (convert old array format to object)
+    if (!history[mediaId]) {
+      const epsObj = {}
+      for (let i = 1; i <= progress; i++) {
+        epsObj[String(i)] = updatedAt
+      }
+      history[mediaId] = { title: anilistTitle, eps: epsObj, last_watched_at: updatedAt, anilist_progress: progress, anilist_updated_at: updatedAt }
+      hasChanges = true
+    } else {
+      if (anilistTitle && !history[mediaId].title) {
+        history[mediaId].title = anilistTitle
+        hasChanges = true
+      }
+
+      // Ensure eps is an object
+      if (Array.isArray(history[mediaId].eps)) {
+        const oldEps = history[mediaId].eps
+        history[mediaId].eps = {}
+        for (const ep of oldEps) {
+          history[mediaId].eps[String(ep)] = history[mediaId].last_watched_at || updatedAt
+        }
+        hasChanges = true
+      }
+      if (!history[mediaId].eps || typeof history[mediaId].eps !== 'object') {
+        history[mediaId].eps = {}
+        hasChanges = true
+      }
+
+      // Merge AniList progress into eps object
+      const existingEps = history[mediaId].eps
+      for (let i = 1; i <= progress; i++) {
+        const epStr = String(i)
+        if (!existingEps[epStr]) {
+          existingEps[epStr] = updatedAt
+          hasChanges = true
+        }
+      }
+
+      // Track AniList-specific data
+      const existingAnilistProgress = history[mediaId].anilist_progress || 0
+      const existingAnilistUpdatedAt = history[mediaId].anilist_updated_at || 0
+
+      // Only update if AniList has newer data
+      if (progress > existingAnilistProgress || updatedAt > existingAnilistUpdatedAt) {
+        history[mediaId].anilist_progress = progress
+        history[mediaId].anilist_updated_at = updatedAt
+        hasChanges = true
+      }
+    }
+  }
+
+  if (hasChanges) {
+    localStorage.setItem('ani-web-history', JSON.stringify(history))
+    // Notify other pages by dispatching event
+    window.dispatchEvent(new Event('history-updated'))
+  }
+}
+
 window.anilistState = anilistState
 window.initAnilist = initAnilist
 window.searchAnilistAnime = searchAnilistAnime
 window.updateAnilistProgress = updateAnilistProgress
+window.syncAnilistToLocal = syncAnilistToLocal

@@ -337,9 +337,20 @@
           const raw = JSON.parse(stored)
           let migrated = false
           for (const key in raw) {
-            if (Array.isArray(raw[key])) {
-              raw[key] = { title: null, eps: raw[key] }
-              migrated = true
+            if (raw[key]) {
+              // Handle old array format: { eps: [1,2,3] } -> { eps: { "1": 0, "2": 0, "3": 0 } }
+              if (Array.isArray(raw[key].eps)) {
+                const oldEps = raw[key].eps
+                raw[key].eps = {}
+                for (const ep of oldEps) {
+                  raw[key].eps[String(ep)] = raw[key].last_watched_at || 0
+                }
+                migrated = true
+              }
+              // Ensure timestamp fields exist
+              if (raw[key].last_watched_at == null) raw[key].last_watched_at = 0
+              if (raw[key].anilist_updated_at == null) raw[key].anilist_updated_at = 0
+              if (raw[key].anilist_progress == null) raw[key].anilist_progress = 0
             }
           }
           state.history = raw
@@ -378,16 +389,64 @@
             return
           }
           for (const [id, data] of Object.entries(imported)) {
-            let eps = Array.isArray(data) ? data : (data && Array.isArray(data.eps) ? data.eps : null)
+            // Handle both old array format and new object format
+            let eps = null
+            if (Array.isArray(data)) {
+              eps = data
+            } else if (data && data.eps) {
+              if (Array.isArray(data.eps)) {
+                eps = data.eps
+              } else if (typeof data.eps === 'object') {
+                // New format: eps is { "1": timestamp, "2": timestamp }
+                eps = Object.keys(data.eps).map(Number)
+              }
+            }
             let title = !Array.isArray(data) && data && data.title ? data.title : null
-            if (!eps) continue
+            if (!eps || eps.length === 0) continue
             
-            if (!state.history[id]) state.history[id] = { title, eps: [] }
-            else if (title && !state.history[id].title) state.history[id].title = title
+            const now = Date.now()
+            if (!state.history[id]) {
+              // Convert array to object format with timestamps
+              const epsObj = {}
+              for (const ep of eps) {
+                epsObj[String(ep)] = now
+              }
+              state.history[id] = { title, eps: epsObj, last_watched_at: now, anilist_updated_at: 0, anilist_progress: 0 }
+            } else {
+              if (title && !state.history[id].title) state.history[id].title = title
+              // Ensure fields exist
+              if (!state.history[id].eps || Array.isArray(state.history[id].eps)) {
+                if (Array.isArray(state.history[id].eps)) {
+                  // Convert old array to object
+                  const epsObj = {}
+                  for (const ep of state.history[id].eps) {
+                    epsObj[String(ep)] = state.history[id].last_watched_at || now
+                  }
+                  state.history[id].eps = epsObj
+                } else {
+                  state.history[id].eps = {}
+                }
+              }
+              if (state.history[id].last_watched_at == null) state.history[id].last_watched_at = 0
+              if (state.history[id].anilist_updated_at == null) state.history[id].anilist_updated_at = 0
+              if (state.history[id].anilist_progress == null) state.history[id].anilist_progress = 0
 
-            const set = new Set(state.history[id].eps)
-            eps.forEach(ep => set.add(ep))
-            state.history[id].eps = [...set].sort((a, b) => a - b)
+              // Add imported episodes with current timestamp
+              for (const ep of eps) {
+                const epStr = String(ep)
+                if (!state.history[id].eps[epStr]) {
+                  state.history[id].eps[epStr] = now
+                }
+              }
+            }
+
+            // Update last_watched_at to most recent
+            const epsObj = state.history[id].eps
+            let maxTs = state.history[id].last_watched_at || 0
+            for (const ts of Object.values(epsObj)) {
+              if (ts > maxTs) maxTs = ts
+            }
+            state.history[id].last_watched_at = maxTs
           }
           saveHistory()
           setStatus('History imported.')
@@ -404,6 +463,48 @@
       el.textContent = message
       el.className = ''
       if (isError) el.classList.add('error')
+    }
+
+    // Format timestamp to relative time (e.g., "2h ago", "Yesterday")
+    function formatRelativeTime(timestamp) {
+      if (!timestamp || timestamp === 0) return null
+
+      const now = Date.now()
+      const diff = now - timestamp
+      const seconds = Math.floor(diff / 1000)
+      const minutes = Math.floor(seconds / 60)
+      const hours = Math.floor(minutes / 60)
+      const days = Math.floor(hours / 24)
+
+      if (seconds < 60) return 'just now'
+      if (minutes < 60) return `${minutes}m ago`
+      if (hours < 24) return `${hours}h ago`
+      if (days === 1) return 'yesterday'
+      if (days < 7) return `${days}d ago`
+      if (days < 30) return `${Math.floor(days / 7)}w ago`
+      if (days < 365) return `${Math.floor(days / 30)}mo ago`
+      return `${Math.floor(days / 365)}y ago`
+    }
+
+    // Get the most recent timestamp from local or AniList
+    function getLastWatchedTimestamp(historyData) {
+      const localTs = historyData.last_watched_at || 0
+      const anilistTs = historyData.anilist_updated_at || 0
+      return Math.max(localTs, anilistTs)
+    }
+
+    // Get the highest episode number from local or AniList progress
+    function getHighestEpisode(historyData) {
+      // Handle both old array format and new object format
+      let localMax = 0
+      if (Array.isArray(historyData.eps)) {
+        localMax = historyData.eps.length > 0 ? Math.max(...historyData.eps) : 0
+      } else if (historyData.eps && typeof historyData.eps === 'object') {
+        const eps = Object.keys(historyData.eps).map(Number)
+        localMax = eps.length > 0 ? Math.max(...eps) : 0
+      }
+      const anilistProgress = historyData.anilist_progress || 0
+      return Math.max(localMax, anilistProgress)
     }
 
     // Clear status
@@ -434,11 +535,19 @@
         const metaEl = document.createElement('span')
         metaEl.className = 'result-meta'
         let metaText = `${item.episodes ?? '?'} ep`
-        
+
         const historyData = state.history[item.id]
-        if (historyData && Array.isArray(historyData.eps) && historyData.eps.length > 0) {
-          const highestEp = Math.max(...historyData.eps)
-          metaText = `Last Watched: Ep ${highestEp} • ${metaText}`
+        if (historyData) {
+          const lastTs = getLastWatchedTimestamp(historyData)
+          const highestEp = getHighestEpisode(historyData)
+          if (lastTs > 0) {
+            const relativeTime = formatRelativeTime(lastTs)
+            if (relativeTime) {
+              metaText = `${relativeTime} • Ep ${highestEp}`
+            }
+          } else if (highestEp > 0) {
+            metaText = `Last Watched: Ep ${highestEp} • ${metaText}`
+          }
         }
         metaEl.textContent = metaText
 
@@ -514,6 +623,14 @@
       state.mode = e.target.value
     })
     document.getElementById('search-form').addEventListener('submit', handleSearch)
+
+    // Listen for history updates from other pages (e.g., AniList sync)
+    window.addEventListener('history-updated', () => {
+      loadHistory()
+      // Re-trigger search to update display if results are shown
+      const query = document.getElementById('search-input').value.trim()
+      if (query) handleSearch({ preventDefault: () => {} })
+    })
 
     // FAB menu toggle
     document.getElementById('fab-toggle').addEventListener('click', () => {
