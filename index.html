@@ -493,6 +493,22 @@
       return Math.max(localTs, anilistTs)
     }
 
+    // Get the episode that was watched most recently (by timestamp)
+    function getLastWatchedEpisode(historyData) {
+      const epsObj = historyData.eps
+      if (!epsObj || typeof epsObj !== 'object') return null
+      
+      let lastEp = null
+      let lastTs = 0
+      for (const [ep, ts] of Object.entries(epsObj)) {
+        if (ts > lastTs) {
+          lastTs = ts
+          lastEp = Number(ep)
+        }
+      }
+      return lastEp
+    }
+
     // Get the highest episode number from local or AniList progress
     function getHighestEpisode(historyData) {
       // Handle both old array format and new object format
@@ -539,14 +555,17 @@
         const historyData = state.history[item.id]
         if (historyData) {
           const lastTs = getLastWatchedTimestamp(historyData)
-          const highestEp = getHighestEpisode(historyData)
           if (lastTs > 0) {
             const relativeTime = formatRelativeTime(lastTs)
-            if (relativeTime) {
-              metaText = `${relativeTime} • Ep ${highestEp}`
+            const lastEp = getLastWatchedEpisode(historyData)
+            if (relativeTime && lastEp) {
+              metaText = `${relativeTime} • Ep ${lastEp}`
             }
-          } else if (highestEp > 0) {
-            metaText = `Last Watched: Ep ${highestEp} • ${metaText}`
+          } else {
+            const highestEp = getHighestEpisode(historyData)
+            if (highestEp > 0) {
+              metaText = `Last Watched: Ep ${highestEp} • ${metaText}`
+            }
           }
         }
         metaEl.textContent = metaText
